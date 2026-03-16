@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { useAuth, canViewAllStats } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
+import { reportsChartColors, selectReportsViewModel } from '@/lib/dashboard-selectors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip as ChartTooltip } from 'recharts'
@@ -27,107 +28,10 @@ export default function ReportsPage() {
   const { leads, projects, tasks } = useData()
 
   const canViewAll = user ? canViewAllStats(user.role) : false
-
-  const pipelineData = useMemo(() => {
-    const statusCounts: Record<string, { count: number; value: number }> = {}
-    const statuses = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost']
-    
-    statuses.forEach(status => {
-      statusCounts[status] = { count: 0, value: 0 }
-    })
-    
-    leads.forEach(lead => {
-      if (statusCounts[lead.status]) {
-        statusCounts[lead.status].count++
-        statusCounts[lead.status].value += lead.value
-      }
-    })
-
-    return [
-      { name: 'Nuevos', count: statusCounts.new.count, value: statusCounts.new.value },
-      { name: 'Contactados', count: statusCounts.contacted.count, value: statusCounts.contacted.value },
-      { name: 'Calificados', count: statusCounts.qualified.count, value: statusCounts.qualified.value },
-      { name: 'Propuesta', count: statusCounts.proposal.count, value: statusCounts.proposal.value },
-      { name: 'Negociacion', count: statusCounts.negotiation.count, value: statusCounts.negotiation.value },
-      { name: 'Ganados', count: statusCounts.won.count, value: statusCounts.won.value },
-    ]
-  }, [leads])
-
-  const monthlyData = useMemo(() => {
-    return [
-      { month: 'Sep', leads: 12, ventas: 3, ingresos: 45000 },
-      { month: 'Oct', leads: 18, ventas: 5, ingresos: 72000 },
-      { month: 'Nov', leads: 15, ventas: 4, ingresos: 58000 },
-      { month: 'Dic', leads: 22, ventas: 7, ingresos: 95000 },
-      { month: 'Ene', leads: 28, ventas: 8, ingresos: 120000 },
-      { month: 'Feb', leads: leads.length, ventas: leads.filter(l => l.status === 'won').length, ingresos: leads.filter(l => l.status === 'won').reduce((s, l) => s + l.value, 0) },
-    ]
-  }, [leads])
-
-  const sourceData = useMemo(() => {
-    const sources: Record<string, number> = {}
-    leads.forEach(lead => {
-      sources[lead.source] = (sources[lead.source] || 0) + 1
-    })
-    
-    const sourceLabels: Record<string, string> = {
-      website: 'Sitio Web',
-      referral: 'Referidos',
-      social_media: 'Redes Sociales',
-      cold_outreach: 'Contacto Frio',
-      event: 'Eventos',
-      other: 'Otros',
-    }
-
-    return Object.entries(sources).map(([key, value]) => ({
-      name: sourceLabels[key] || key,
-      value,
-    }))
-  }, [leads])
-
-  const projectStatusData = useMemo(() => {
-    const statusLabels: Record<string, string> = {
-      backlog: 'Backlog',
-      in_progress: 'En Progreso',
-      review: 'Revision',
-      delivered: 'Entregado',
-      completed: 'Completado',
-    }
-
-    const counts: Record<string, number> = {}
-    projects.forEach(p => {
-      counts[p.status] = (counts[p.status] || 0) + 1
-    })
-
-    return Object.entries(counts).map(([key, value]) => ({
-      name: statusLabels[key] || key,
-      value,
-    }))
-  }, [projects])
-
-  const stats = useMemo(() => {
-    const totalLeads = leads.length
-    const wonLeads = leads.filter(l => l.status === 'won').length
-    const conversionRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0
-    const totalRevenue = leads.filter(l => l.status === 'won').reduce((s, l) => s + l.value, 0)
-    const avgDealSize = wonLeads > 0 ? Math.round(totalRevenue / wonLeads) : 0
-    const activeProjects = projects.filter(p => p.status === 'in_progress').length
-    const completedTasks = tasks.filter(t => t.status === 'done').length
-    const avgScore = leads.length > 0 ? Math.round(leads.reduce((s, l) => s + l.score, 0) / leads.length) : 0
-
-    return {
-      totalLeads,
-      wonLeads,
-      conversionRate,
-      totalRevenue,
-      avgDealSize,
-      activeProjects,
-      completedTasks,
-      avgScore,
-    }
-  }, [leads, projects, tasks])
-
-  const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+  const { pipelineData, monthlyData, sourceData, projectStatusData, stats } = useMemo(
+    () => selectReportsViewModel(leads, projects, tasks),
+    [leads, projects, tasks]
+  )
 
   if (!user) return null
 
@@ -293,7 +197,7 @@ export default function ReportsPage() {
                       dataKey="value"
                     >
                       {sourceData.map((entry, index) => (
-                        <Cell key={`cell-${entry.name}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`cell-${entry.name}`} fill={reportsChartColors[index % reportsChartColors.length]} />
                       ))}
                     </Pie>
                     <ChartTooltip />
@@ -326,7 +230,7 @@ export default function ReportsPage() {
                       dataKey="value"
                     >
                       {projectStatusData.map((entry, index) => (
-                        <Cell key={`cell-${entry.name}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell key={`cell-${entry.name}`} fill={reportsChartColors[index % reportsChartColors.length]} />
                       ))}
                     </Pie>
                     <ChartTooltip />

@@ -120,6 +120,43 @@ export interface RewardRedeemDialogModel {
   canAfford: boolean
 }
 
+export interface ReportsStatsSummary {
+  totalLeads: number
+  wonLeads: number
+  conversionRate: number
+  totalRevenue: number
+  avgDealSize: number
+  activeProjects: number
+  completedTasks: number
+  avgScore: number
+}
+
+export interface ReportsPipelineDatum {
+  name: string
+  count: number
+  value: number
+}
+
+export interface ReportsMonthlyDatum {
+  month: string
+  leads: number
+  ventas: number
+  ingresos: number
+}
+
+export interface ReportsBreakdownDatum {
+  name: string
+  value: number
+}
+
+export interface ReportsViewModel {
+  pipelineData: ReportsPipelineDatum[]
+  monthlyData: ReportsMonthlyDatum[]
+  sourceData: ReportsBreakdownDatum[]
+  projectStatusData: ReportsBreakdownDatum[]
+  stats: ReportsStatsSummary
+}
+
 interface LeadListOptions {
   searchQuery: string
   statusFilter: LeadStatusFilter
@@ -191,6 +228,27 @@ export const rewardPointEventLabels: Record<
   sla_met: { label: 'SLA cumplido', icon: Zap },
   referral: { label: 'Referido', icon: Star },
   bonus: { label: 'Bono', icon: Award },
+}
+
+export const reportsChartColors = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+
+const reportsSourceLabels: Record<string, string> = {
+  website: 'Sitio Web',
+  referral: 'Referidos',
+  social: 'Redes Sociales',
+  social_media: 'Redes Sociales',
+  cold_call: 'Contacto Frio',
+  cold_outreach: 'Contacto Frio',
+  event: 'Eventos',
+  other: 'Otros',
+}
+
+const reportsProjectStatusLabels: Record<string, string> = {
+  backlog: 'Backlog',
+  in_progress: 'En Progreso',
+  review: 'Revision',
+  delivered: 'Entregado',
+  completed: 'Completado',
 }
 
 interface EarningsCommissionLike {
@@ -427,6 +485,87 @@ export function selectRewardRedeemDialog(
     remainingPointsLabel: remainingPoints.toLocaleString(),
     remainingPointsTone: canAfford ? 'text-emerald-700' : 'text-destructive',
     canAfford,
+  }
+}
+
+export function selectReportsViewModel(
+  leads: Lead[],
+  projects: Project[],
+  tasks: Task[]
+): ReportsViewModel {
+  const pipelineStatusCounts: Record<string, { count: number; value: number }> = {}
+  const pipelineStatuses = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost']
+
+  pipelineStatuses.forEach((status) => {
+    pipelineStatusCounts[status] = { count: 0, value: 0 }
+  })
+
+  leads.forEach((lead) => {
+    if (pipelineStatusCounts[lead.status]) {
+      pipelineStatusCounts[lead.status].count++
+      pipelineStatusCounts[lead.status].value += lead.value
+    }
+  })
+
+  const totalLeads = leads.length
+  const wonLeads = leads.filter((lead) => lead.status === 'won').length
+  const totalRevenue = leads
+    .filter((lead) => lead.status === 'won')
+    .reduce((sum, lead) => sum + lead.value, 0)
+
+  const sourceCounts: Record<string, number> = {}
+  leads.forEach((lead) => {
+    sourceCounts[lead.source] = (sourceCounts[lead.source] || 0) + 1
+  })
+
+  const projectStatusCounts: Record<string, number> = {}
+  projects.forEach((project) => {
+    projectStatusCounts[project.status] = (projectStatusCounts[project.status] || 0) + 1
+  })
+
+  return {
+    pipelineData: [
+      { name: 'Nuevos', count: pipelineStatusCounts.new.count, value: pipelineStatusCounts.new.value },
+      { name: 'Contactados', count: pipelineStatusCounts.contacted.count, value: pipelineStatusCounts.contacted.value },
+      { name: 'Calificados', count: pipelineStatusCounts.qualified.count, value: pipelineStatusCounts.qualified.value },
+      { name: 'Propuesta', count: pipelineStatusCounts.proposal.count, value: pipelineStatusCounts.proposal.value },
+      { name: 'Negociacion', count: pipelineStatusCounts.negotiation.count, value: pipelineStatusCounts.negotiation.value },
+      { name: 'Ganados', count: pipelineStatusCounts.won.count, value: pipelineStatusCounts.won.value },
+    ],
+    monthlyData: [
+      { month: 'Sep', leads: 12, ventas: 3, ingresos: 45000 },
+      { month: 'Oct', leads: 18, ventas: 5, ingresos: 72000 },
+      { month: 'Nov', leads: 15, ventas: 4, ingresos: 58000 },
+      { month: 'Dic', leads: 22, ventas: 7, ingresos: 95000 },
+      { month: 'Ene', leads: 28, ventas: 8, ingresos: 120000 },
+      {
+        month: 'Feb',
+        leads: totalLeads,
+        ventas: wonLeads,
+        ingresos: totalRevenue,
+      },
+    ],
+    sourceData: Object.entries(sourceCounts).map(([key, value]) => ({
+      name: reportsSourceLabels[key] || key,
+      value,
+    })),
+    projectStatusData: Object.entries(projectStatusCounts).map(([key, value]) => ({
+      name: reportsProjectStatusLabels[key] || key,
+      value,
+    })),
+    stats: {
+      totalLeads,
+      wonLeads,
+      conversionRate: totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0,
+      totalRevenue,
+      avgDealSize: wonLeads > 0 ? Math.round(totalRevenue / wonLeads) : 0,
+      activeProjects: projects.filter((project) => project.status === 'in_progress').length,
+      completedTasks: tasks.filter((task) => task.status === 'done').length,
+      avgScore:
+        totalLeads > 0
+          ? Math.round(leads.reduce((sum, lead) => sum + lead.score, 0) / totalLeads)
+          : 0,
+    },
   }
 }
 

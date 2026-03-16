@@ -4,6 +4,11 @@
 - Projects/tasks dashboard reads consolidated onto shared useData()
 - Home/dashboard reads consolidated onto shared useData() with KPIs derived via lib/dashboard-selectors.ts
 - Dashboard UI cleanup completed for home, projects, and tasks surfaces
+- Reports read-model/report derivation was extracted into lib/dashboard-selectors.ts
+- app/dashboard/reports/page.tsx now consumes report selectors for KPI summary, pipeline aggregation, monthly trend projection, source breakdown, project-status breakdown, and chart colors
+- The reports source-label mismatch was fixed by supporting both normalized keys and legacy aliases
+- Reports behavior was preserved
+- Reports still keeps the following page-local: auth reads, canViewAll behavior, Tabs shell and chart tab composition, chart rendering/configuration, and all page UI/layout
 - Rewards read-model/display derivation was extracted into lib/dashboard-selectors.ts
 - app/dashboard/rewards/page.tsx now consumes shared rewards from useData()
 - Direct mockRewards coupling was removed
@@ -35,6 +40,7 @@
 
 ## Stable files touched
 - app/dashboard/page.tsx
+- app/dashboard/reports/page.tsx
 - app/dashboard/rewards/page.tsx
 - app/dashboard/settings/page.tsx
 - app/dashboard/leads/page.tsx
