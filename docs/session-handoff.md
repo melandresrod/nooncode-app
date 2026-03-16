@@ -37,6 +37,18 @@
 - app/dashboard/earnings/page.tsx is now a lighter composition layer consuming selector output
 - Earnings commissions/transactions remain intentionally page-local and unconsolidated
 - Earnings intentionally keeps the following page-local: Commission, mockCommissions, Transaction, mockTransactions, statusConfig, and hardcoded display assumptions like +18%, 5%, and $500
+- Dashboard entry authorization is now centralized in lib/auth-context.tsx and enforced in app/dashboard/layout.tsx
+- Auth now exposes a reusable dashboard access contract with route access levels plus path authorization helpers
+- Unauthenticated users are redirected to /
+- Authenticated but unauthorized users are redirected to /dashboard
+- Unauthorized dashboard content is prevented from mounting while redirect resolution is in progress
+- Auth behavior was preserved
+- The following page-level auth/authorization inconsistencies still remain:
+  - app/dashboard/settings/page.tsx admin-only UI guard and SwitchRole behavior
+  - app/dashboard/projects/page.tsx local canManageTeam view logic
+  - app/dashboard/tasks/page.tsx local role-based task filtering
+  - app/dashboard/reports/page.tsx local canViewAll semantics
+  - earnings/rewards currently rely on layout-level authenticated access only
 
 ## Stable files touched
 - app/dashboard/page.tsx
@@ -48,11 +60,13 @@
 - app/dashboard/projects/page.tsx
 - app/dashboard/tasks/page.tsx
 - app/dashboard/earnings/page.tsx
+- app/dashboard/layout.tsx
 - lib/dashboard-selectors.ts
+- lib/auth-context.tsx
 
 ## Constraints / out-of-scope
 - Do not reopen completed dashboard data consolidation unless a direct regression is found
-- Out of scope: auth, Maxwell, reports, sidebar, recent activity/activity source, new features, new data sources, provider/domain contract changes, speculative refactors
+- Out of scope: Maxwell, reports, sidebar, recent activity/activity source, new features, new data sources, provider/domain contract changes, speculative refactors
 - Rewards and settings remain untouched and out of scope
 
 ## Known tooling limitations

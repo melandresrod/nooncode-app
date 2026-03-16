@@ -3,8 +3,8 @@
 import React from "react"
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/lib/auth-context'
+import { usePathname, useRouter } from 'next/navigation'
+import { getAuthorizedDashboardPath, useAuth } from '@/lib/auth-context'
 import { DataProvider } from '@/lib/data-context'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -19,14 +19,25 @@ export default function DashboardLayout({
 }) {
   const { user } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
+
+  const authorizedPath = user && pathname
+    ? getAuthorizedDashboardPath(user.role, pathname)
+    : null
+  const isAuthorized = !!user && !!pathname && authorizedPath === pathname
 
   useEffect(() => {
     if (!user) {
-      router.push('/')
+      router.replace('/')
+      return
     }
-  }, [user, router])
 
-  if (!user) {
+    if (pathname && authorizedPath && authorizedPath !== pathname) {
+      router.replace(authorizedPath)
+    }
+  }, [authorizedPath, pathname, router, user])
+
+  if (!user || !isAuthorized) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Spinner className="size-8" />

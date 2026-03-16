@@ -14,6 +14,33 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+type DashboardAccessLevel = 'authenticated' | 'sales' | 'delivery' | 'admin'
+
+interface DashboardRouteAccessRule {
+  prefix: string
+  access: DashboardAccessLevel
+}
+
+const dashboardRouteAccessRules: DashboardRouteAccessRule[] = [
+  { prefix: '/dashboard/settings', access: 'admin' },
+  { prefix: '/dashboard/leads', access: 'sales' },
+  { prefix: '/dashboard/pipeline', access: 'sales' },
+  { prefix: '/dashboard/projects', access: 'delivery' },
+  { prefix: '/dashboard/tasks', access: 'delivery' },
+]
+
+function normalizeDashboardPath(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    return pathname.slice(0, -1)
+  }
+
+  return pathname
+}
+
+function matchesDashboardPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`)
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -81,6 +108,33 @@ export function canManageTeam(role: UserRole): boolean {
 
 export function canViewAllStats(role: UserRole): boolean {
   return ['admin', 'sales_manager'].includes(role)
+}
+
+export function getDashboardAccessLevel(pathname: string): DashboardAccessLevel {
+  const normalizedPath = normalizeDashboardPath(pathname)
+  const matchedRule = dashboardRouteAccessRules.find((rule) =>
+    matchesDashboardPrefix(normalizedPath, rule.prefix)
+  )
+
+  return matchedRule?.access ?? 'authenticated'
+}
+
+export function canAccessDashboardPath(role: UserRole, pathname: string): boolean {
+  const accessLevel = getDashboardAccessLevel(pathname)
+
+  if (accessLevel === 'sales') return canAccessSales(role)
+  if (accessLevel === 'delivery') return canAccessDelivery(role)
+  if (accessLevel === 'admin') return canAccessAdmin(role)
+
+  return true
+}
+
+export function getAuthorizedDashboardPath(role: UserRole, pathname: string): string {
+  if (canAccessDashboardPath(role, pathname)) {
+    return normalizeDashboardPath(pathname)
+  }
+
+  return '/dashboard'
 }
 
 export function getRoleLabel(role: UserRole): string {
