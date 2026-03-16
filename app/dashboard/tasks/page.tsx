@@ -1,0 +1,446 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { useAuth } from '@/lib/auth-context'
+import { useData } from '@/lib/data-context'
+import type { Task, TaskStatus, TaskPriority } from '@/lib/types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Progress } from '@/components/ui/progress'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import {
+  ListTodo,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Calendar,
+  Timer,
+  FolderKanban,
+  Filter,
+  ArrowUpCircle,
+  ArrowRightCircle,
+  ArrowDownCircle,
+  Flame,
+} from 'lucide-react'
+
+const statusConfig: Record<TaskStatus, { label: string; color: string }> = {
+  todo: { label: 'Por hacer', color: 'bg-slate-500/10 text-slate-600 border-slate-200' },
+  in_progress: { label: 'En progreso', color: 'bg-blue-500/10 text-blue-600 border-blue-200' },
+  review: { label: 'Revision', color: 'bg-yellow-500/10 text-yellow-600 border-yellow-200' },
+  done: { label: 'Completada', color: 'bg-green-500/10 text-green-600 border-green-200' },
+}
+
+const priorityConfig: Record<TaskPriority, { label: string; color: string; icon: typeof Flame }> = {
+  urgent: { label: 'Urgente', color: 'text-red-600', icon: Flame },
+  high: { label: 'Alta', color: 'text-orange-600', icon: ArrowUpCircle },
+  medium: { label: 'Media', color: 'text-yellow-600', icon: ArrowRightCircle },
+  low: { label: 'Baja', color: 'text-slate-500', icon: ArrowDownCircle },
+}
+
+export default function TasksPage() {
+  const { user } = useAuth()
+  const { tasks, projects, updateTask, updateTaskStatus } = useData()
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [priorityFilter, setPriorityFilter] = useState<string>('all')
+
+  if (!user) return null
+
+  // Filter tasks for current user (devs see only their tasks, PMs see all)
+  const userTasks = user.role === 'developer'
+    ? tasks.filter((t) => t.assignedTo === user.id)
+    : tasks
+
+  const filteredTasks = userTasks.filter((task) => {
+    const matchesStatus = statusFilter === 'all' || task.status === statusFilter
+    const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter
+    return matchesStatus && matchesPriority
+  })
+
+  const getProjectName = (projectId: string) => {
+    return projects.find((p) => p.id === projectId)?.name || 'Proyecto'
+  }
+
+  const handleStatusChange = (taskId: string, newStatus: TaskStatus) => {
+    updateTaskStatus(taskId, newStatus)
+    toast.success(`Tarea actualizada a "${statusConfig[newStatus].label}"`)
+  }
+
+  const handleQuickComplete = (taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId)
+    if (task) {
+      const newStatus = task.status === 'done' ? 'todo' : 'done'
+      handleStatusChange(taskId, newStatus)
+    }
+  }
+
+  const handleSaveProgress = (taskId: string, hoursWorked: string) => {
+    updateTask(taskId, {
+      actualHours: hoursWorked ? Number.parseInt(hoursWorked, 10) : undefined,
+    })
+    toast.success('Progreso guardado')
+  }
+
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
+    [tasks, selectedTaskId]
+  )
+
+  // Stats
+  const totalTasks = userTasks.length
+  const todoTasks = userTasks.filter((t) => t.status === 'todo').length
+  const inProgressTasks = userTasks.filter((t) => t.status === 'in_progress').length
+  const completedTasks = userTasks.filter((t) => t.status === 'done').length
+  const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-balance">Mis Tareas</h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Gestiona y da seguimiento a tus tareas asignadas
+          </p>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tareas</CardTitle>
+            <ListTodo className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Por Hacer</CardTitle>
+            <Clock className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{todoTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
+            <AlertCircle className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{inProgressTasks}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completadas</CardTitle>
+            <CheckCircle2 className="size-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{completedTasks}</div>
+            <Progress value={completionRate} className="h-1.5 mt-2" />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <Filter className="size-4 mr-2" />
+            <SelectValue placeholder="Estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            {Object.entries(statusConfig).map(([value, config]) => (
+              <SelectItem key={value} value={value}>
+                {config.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Prioridad" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las prioridades</SelectItem>
+            {Object.entries(priorityConfig).map(([value, config]) => (
+              <SelectItem key={value} value={value}>
+                {config.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Task List */}
+      <div className="space-y-3">
+        {filteredTasks.length === 0 ? (
+          <Card className="p-12">
+            <Empty className="border-0 p-0">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ListTodo className="size-5" />
+                </EmptyMedia>
+                <EmptyTitle>No hay tareas que mostrar</EmptyTitle>
+                <EmptyDescription>
+                  Ajusta los filtros o espera nuevas asignaciones para ver trabajo aqui.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          </Card>
+        ) : (
+          filteredTasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              projectName={getProjectName(task.projectId)}
+              onQuickComplete={handleQuickComplete}
+              onClick={() => setSelectedTaskId(task.id)}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Task Detail Dialog */}
+      <Dialog open={!!selectedTask} onOpenChange={() => setSelectedTaskId(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalle de Tarea</DialogTitle>
+            <DialogDescription>
+              Actualiza el estado y registra tu progreso
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTask && (
+            <TaskDetail
+              task={selectedTask}
+              projectName={getProjectName(selectedTask.projectId)}
+              onStatusChange={handleStatusChange}
+              onSaveProgress={handleSaveProgress}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+interface TaskCardProps {
+  task: Task
+  projectName: string
+  onQuickComplete: (taskId: string) => void
+  onClick: () => void
+}
+
+function TaskCard({ task, projectName, onQuickComplete, onClick }: TaskCardProps) {
+  const PriorityIcon = priorityConfig[task.priority].icon
+  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done'
+
+  return (
+    <Card
+      className={cn(
+        'p-4 cursor-pointer hover:shadow-md transition-shadow',
+        isOverdue && 'border-destructive/50'
+      )}
+      onClick={onClick}
+    >
+      <div className="flex items-start gap-4">
+        {/* Checkbox */}
+        <Checkbox
+          checked={task.status === 'done'}
+          onCheckedChange={(e) => {
+            e // prevent event
+            onQuickComplete(task.id)
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-1"
+        />
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <h3 className={cn(
+                'font-medium truncate',
+                task.status === 'done' && 'line-through text-muted-foreground'
+              )}>
+                {task.title}
+              </h3>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <FolderKanban className="size-3" />
+                  {projectName}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className={statusConfig[task.status].color}>
+                {statusConfig[task.status].label}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Meta Info */}
+          <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
+            <span className={cn('flex items-center gap-1', priorityConfig[task.priority].color)}>
+              <PriorityIcon className="size-4" />
+              {priorityConfig[task.priority].label}
+            </span>
+            {task.dueDate && (
+              <span className={cn(
+                'flex items-center gap-1',
+                isOverdue ? 'text-destructive' : 'text-muted-foreground'
+              )}>
+                <Calendar className="size-3" />
+                {task.dueDate.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' })}
+                {isOverdue && ' (Vencida)'}
+              </span>
+            )}
+            {task.estimatedHours && (
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Timer className="size-3" />
+                {task.actualHours || 0}/{task.estimatedHours}h
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+interface TaskDetailProps {
+  task: Task
+  projectName: string
+  onStatusChange: (taskId: string, newStatus: TaskStatus) => void
+  onSaveProgress: (taskId: string, hoursWorked: string) => void
+}
+
+function TaskDetail({ task, projectName, onStatusChange, onSaveProgress }: TaskDetailProps) {
+  const [hoursWorked, setHoursWorked] = useState(task.actualHours?.toString() || '')
+  const [notes, setNotes] = useState('')
+  const PriorityIcon = priorityConfig[task.priority].icon
+
+  const handleSaveProgress = () => {
+    onSaveProgress(task.id, hoursWorked)
+    setNotes('')
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Task Info */}
+      <div>
+        <h3 className="font-semibold text-lg">{task.title}</h3>
+        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+          <FolderKanban className="size-4" />
+          {projectName}
+        </p>
+      </div>
+
+      {task.description && (
+        <p className="text-sm text-muted-foreground">{task.description}</p>
+      )}
+
+      {/* Status & Priority */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1">
+          <Label className="text-xs text-muted-foreground">Estado</Label>
+          <Select
+            value={task.status}
+            onValueChange={(v) => onStatusChange(task.id, v as TaskStatus)}
+          >
+            <SelectTrigger className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(statusConfig).map(([value, config]) => (
+                <SelectItem key={value} value={value}>
+                  {config.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex-1">
+          <Label className="text-xs text-muted-foreground">Prioridad</Label>
+          <div className={cn(
+            'mt-1 flex items-center gap-2 p-2 rounded-md border',
+            priorityConfig[task.priority].color
+          )}>
+            <PriorityIcon className="size-4" />
+            {priorityConfig[task.priority].label}
+          </div>
+        </div>
+      </div>
+
+      {/* Time Info */}
+      <div className="grid grid-cols-2 gap-4">
+        {task.dueDate && (
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground">Fecha limite</p>
+            <p className="font-medium">{task.dueDate.toLocaleDateString('es-MX')}</p>
+          </div>
+        )}
+        {task.estimatedHours && (
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground">Horas estimadas</p>
+            <p className="font-medium">{task.estimatedHours}h</p>
+          </div>
+        )}
+      </div>
+
+      {/* Log Progress */}
+      <div className="space-y-3 pt-4 border-t">
+        <h4 className="font-medium">Registrar progreso</h4>
+        <div className="space-y-2">
+          <Label htmlFor="hours">Horas trabajadas</Label>
+          <Input
+            id="hours"
+            type="number"
+            placeholder="0"
+            value={hoursWorked}
+            onChange={(e) => setHoursWorked(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="notes">Notas de avance</Label>
+          <Textarea
+            id="notes"
+            placeholder="Describe que avanzaste..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+          />
+        </div>
+        <Button onClick={handleSaveProgress} className="w-full">
+          Guardar progreso
+        </Button>
+      </div>
+    </div>
+  )
+}
