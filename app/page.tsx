@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { Button } from '@/components/ui/button'
@@ -16,8 +16,14 @@ import { Sun, Zap, Users, TrendingUp } from 'lucide-react'
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const { login, isLoading } = useAuth()
+  const { authMode, login, isLoading, user } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    if (user) {
+      router.replace('/dashboard')
+    }
+  }, [router, user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +39,11 @@ export default function LoginPage() {
       toast.success('Bienvenido a NoonApp')
       router.push('/dashboard')
     } else {
-      toast.error('Credenciales invalidas. Usa uno de los emails de prueba.')
+      toast.error(
+        authMode === 'supabase'
+          ? 'Credenciales invalidas.'
+          : 'Credenciales invalidas. Usa uno de los emails de prueba.'
+      )
     }
   }
 
@@ -155,29 +165,31 @@ export default function LoginPage() {
                 </Button>
               </form>
 
-              <div className="mt-6">
-                <p className="text-sm text-muted-foreground mb-3">Cuentas de prueba:</p>
-                <div className="space-y-2">
-                  {demoAccounts.map((account) => (
-                    <button
-                      key={account.email}
-                      type="button"
-                      onClick={() => setEmail(account.email)}
-                      className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium">{account.email}</p>
-                          <p className="text-xs text-muted-foreground">{account.description}</p>
+              {authMode === 'mock' && (
+                <div className="mt-6">
+                  <p className="text-sm text-muted-foreground mb-3">Cuentas de prueba:</p>
+                  <div className="space-y-2">
+                    {demoAccounts.map((account) => (
+                      <button
+                        key={account.email}
+                        type="button"
+                        onClick={() => setEmail(account.email)}
+                        className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{account.email}</p>
+                            <p className="text-xs text-muted-foreground">{account.description}</p>
+                          </div>
+                          <span className="text-xs bg-secondary px-2 py-1 rounded-md font-medium">
+                            {account.role}
+                          </span>
                         </div>
-                        <span className="text-xs bg-secondary px-2 py-1 rounded-md font-medium">
-                          {account.role}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>

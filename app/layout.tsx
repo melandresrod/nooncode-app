@@ -4,6 +4,10 @@ import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from '@/components/ui/sonner'
 import { AuthProvider } from '@/lib/auth-context'
+import type { User } from '@/lib/types'
+import { mapProfileToClientUser, type AuthMode } from '@/lib/auth-user'
+import { hasSupabasePublicEnv, isSupabaseAuthEnabled } from '@/lib/env'
+import { getCurrentPrincipal } from '@/lib/server/auth/session'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -37,15 +41,39 @@ export const viewport: Viewport = {
   initialScale: 1,
 }
 
-export default function RootLayout({
+async function getInitialAuthState(): Promise<{
+  authMode: AuthMode
+  initialUser: User | null
+}> {
+  const authMode: AuthMode =
+    isSupabaseAuthEnabled() && hasSupabasePublicEnv() ? 'supabase' : 'mock'
+
+  if (authMode !== 'supabase') {
+    return {
+      authMode,
+      initialUser: null,
+    }
+  }
+
+  const principal = await getCurrentPrincipal()
+
+  return {
+    authMode,
+    initialUser: principal ? mapProfileToClientUser(principal.profile) : null,
+  }
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const { authMode, initialUser } = await getInitialAuthState()
+
   return (
     <html lang="es">
       <body className={`${inter.variable} font-sans antialiased`}>
-        <AuthProvider>
+        <AuthProvider authMode={authMode} initialUser={initialUser}>
           {children}
           <Toaster position="top-right" richColors />
         </AuthProvider>

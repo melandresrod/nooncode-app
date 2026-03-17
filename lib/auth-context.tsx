@@ -1,14 +1,26 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  startTransition,
+  type ReactNode,
+} from 'react'
+import { useRouter } from 'next/navigation'
+import { createSupabaseBrowserClient } from '@/lib/server/supabase/browser'
+import type { AuthMode } from '@/lib/auth-user'
 import type { User, UserRole } from './types'
 import { mockUsers } from './mock-data'
 
 interface AuthContextType {
+  authMode: AuthMode
   user: User | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<boolean>
-  logout: () => void
+  logout: () => Promise<void>
   switchRole: (role: UserRole) => void
 }
 
@@ -41,41 +53,117 @@ function matchesDashboardPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`)
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+interface AuthProviderProps {
+  authMode: AuthMode
+  initialUser: User | null
+  children: ReactNode
+}
+
+export function AuthProvider({ authMode, initialUser, children }: AuthProviderProps) {
+  const router = useRouter()
+  const [user, setUser] = useState<User | null>(initialUser)
   const [isLoading, setIsLoading] = useState(false)
 
-  const login = useCallback(async (email: string, _password: string): Promise<boolean> => {
-    setIsLoading(true)
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800))
-    
-    const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase())
-    
-    if (foundUser) {
-      setUser(foundUser)
-      setIsLoading(false)
-      return true
-    }
-    
-    setIsLoading(false)
-    return false
-  }, [])
+  useEffect(() => {
+    setUser(initialUser)
+  }, [initialUser])
 
-  const logout = useCallback(() => {
+  useEffect(() => {
+    if (authMode !== 'supabase') {
+      return
+    }
+
+    const supabase = createSupabaseBrowserClient()
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+      }
+
+      if (event !== 'INITIAL_SESSION') {
+        setIsLoading(false)
+        startTransition(() => {
+          router.refresh()
+        })
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [authMode, router])
+
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    setIsLoading(true)
+
+    try {
+      if (authMode === 'supabase') {
+        const supabase = createSupabaseBrowserClient()
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        })
+
+        if (error) {
+          return false
+        }
+
+        startTransition(() => {
+          router.refresh()
+        })
+
+        return true
+      }
+
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 800))
+
+      const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase())
+
+      if (foundUser) {
+        setUser(foundUser)
+        return true
+      }
+
+      return false
+    } finally {
+      setIsLoading(false)
+    }
+  }, [authMode, router])
+
+  const logout = useCallback(async () => {
+    if (authMode === 'supabase') {
+      const supabase = createSupabaseBrowserClient()
+      setUser(null)
+      setIsLoading(true)
+      try {
+        await supabase.auth.signOut()
+      } finally {
+        setIsLoading(false)
+        startTransition(() => {
+          router.refresh()
+        })
+      }
+      return
+    }
+
     setUser(null)
-  }, [])
+  }, [authMode, router])
 
   const switchRole = useCallback((role: UserRole) => {
+    if (authMode === 'supabase') {
+      return
+    }
+
     const userWithRole = mockUsers.find(u => u.role === role)
     if (userWithRole) {
       setUser(userWithRole)
     }
-  }, [])
+  }, [authMode])
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, switchRole }}>
+    <AuthContext.Provider value={{ authMode, user, isLoading, login, logout, switchRole }}>
       {children}
     </AuthContext.Provider>
   )
