@@ -29,8 +29,18 @@ export default function ReportsPage() {
 
   const canViewAll = user ? canViewAllStats(user.role) : false
   const { pipelineData, monthlyData, sourceData, projectStatusData, stats } = useMemo(
-    () => selectReportsViewModel(leads, projects, tasks),
-    [leads, projects, tasks]
+    () => {
+      if (canViewAll || !user) {
+        return selectReportsViewModel(leads, projects, tasks)
+      }
+
+      return selectReportsViewModel(
+        leads.filter((lead) => lead.assignedTo === user.id),
+        projects.filter((project) => project.pmId === user.id || project.teamIds.includes(user.id)),
+        tasks.filter((task) => task.assignedTo === user.id)
+      )
+    },
+    [canViewAll, user, leads, projects, tasks]
   )
 
   if (!user) return null
