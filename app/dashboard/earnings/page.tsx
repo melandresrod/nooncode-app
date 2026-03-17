@@ -99,6 +99,7 @@ export default function EarningsPage() {
   if (!user) return null
 
   const sharedUser = users.find((candidate) => candidate.id === user.id) ?? user
+
   const {
     totalEarnings,
     pendingCommissions,
