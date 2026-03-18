@@ -37,6 +37,11 @@ export default function LoginPage() {
     
     if (success) {
       toast.success('Bienvenido a NoonApp')
+      if (authMode === 'supabase') {
+        window.location.replace('/dashboard')
+        return
+      }
+
       router.push('/dashboard')
     } else {
       toast.error(
