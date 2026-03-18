@@ -55,6 +55,7 @@ async function getInitialAuthState(): Promise<{
     }
   }
 
+  // Public routes should render anonymously when no Supabase session exists.
   const principal = await getCurrentPrincipal()
 
   return {

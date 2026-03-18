@@ -18,6 +18,16 @@ async function getServerClientOrNull() {
   return createSupabaseServerClient()
 }
 
+function isMissingSessionError(error: { message?: string } | null | undefined): boolean {
+  const message = error?.message?.toLowerCase()
+
+  if (!message) {
+    return false
+  }
+
+  return message.includes('auth session missing') || message.includes('session missing')
+}
+
 export async function getCurrentSession(): Promise<Session | null> {
   const client = await getServerClientOrNull()
 
@@ -30,7 +40,7 @@ export async function getCurrentSession(): Promise<Session | null> {
     error,
   } = await client.auth.getSession()
 
-  if (error) {
+  if (error && !isMissingSessionError(error)) {
     throw new Error(`Failed to resolve current session: ${error.message}`)
   }
 
@@ -49,7 +59,7 @@ export async function getCurrentUser(): Promise<User | null> {
     error,
   } = await client.auth.getUser()
 
-  if (error) {
+  if (error && !isMissingSessionError(error)) {
     throw new Error(`Failed to resolve current user: ${error.message}`)
   }
 
@@ -68,7 +78,7 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
     error,
   } = await client.auth.getUser()
 
-  if (error) {
+  if (error && !isMissingSessionError(error)) {
     throw new Error(`Failed to resolve current profile user: ${error.message}`)
   }
 
@@ -91,7 +101,7 @@ export async function getCurrentPrincipal(): Promise<AuthenticatedPrincipal | nu
     error,
   } = await client.auth.getUser()
 
-  if (error) {
+  if (error && !isMissingSessionError(error)) {
     throw new Error(`Failed to resolve current principal user: ${error.message}`)
   }
 
@@ -125,7 +135,7 @@ export async function markCurrentUserLogin(at: Date = new Date()): Promise<void>
     error,
   } = await client.auth.getUser()
 
-  if (error) {
+  if (error && !isMissingSessionError(error)) {
     throw new Error(`Failed to resolve login timestamp target user: ${error.message}`)
   }
 
