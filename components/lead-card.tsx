@@ -52,9 +52,28 @@ const nextStatus: Partial<Record<LeadStatus, LeadStatus>> = {
   negotiation: 'won',
 }
 
+function isValidLeadEmail(email: string | undefined): boolean {
+  if (!email) {
+    return false
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function buildGmailComposeUrl(email: string): string {
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: email,
+  })
+
+  return `https://mail.google.com/mail/?${params.toString()}`
+}
+
 export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardProps) {
   const statusInfo = statusConfig[lead.status]
   const next = nextStatus[lead.status]
+  const hasValidEmail = isValidLeadEmail(lead.email)
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-500/10'
@@ -65,6 +84,16 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
 
   const handleQuickAction = (e: React.MouseEvent) => {
     e.stopPropagation()
+  }
+
+  const handleOpenGmail = (event?: Event | React.MouseEvent) => {
+    event?.stopPropagation()
+
+    if (!hasValidEmail) {
+      return
+    }
+
+    window.open(buildGmailComposeUrl(lead.email), '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -156,9 +185,12 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Acciones</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!hasValidEmail}
+                onSelect={(event) => handleOpenGmail(event)}
+              >
                 <MessageSquare className="size-4 mr-2" />
-                Enviar email
+                Abrir en Gmail
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <Phone className="size-4 mr-2" />

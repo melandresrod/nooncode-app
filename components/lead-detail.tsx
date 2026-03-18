@@ -56,10 +56,30 @@ const sourceLabels: Record<string, string> = {
   other: 'Otro',
 }
 
+function isValidLeadEmail(email: string | undefined): boolean {
+  if (!email) {
+    return false
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function buildGmailComposeUrl(email: string): string {
+  const params = new URLSearchParams({
+    view: 'cm',
+    fs: '1',
+    to: email,
+  })
+
+  return `https://mail.google.com/mail/?${params.toString()}`
+}
+
 export function LeadDetail({ lead, onStatusChange, onClose }: LeadDetailProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedContent, setGeneratedContent] = useState('')
   const [noteText, setNoteText] = useState('')
+  const hasValidEmail = isValidLeadEmail(lead.email)
+  const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-500/10'
@@ -125,6 +145,14 @@ Total: 8 semanas
     toast.success('Copiado al portapapeles')
   }
 
+  const handleOpenGmail = () => {
+    if (!hasValidEmail) {
+      return
+    }
+
+    window.open(buildGmailComposeUrl(lead.email), '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -160,9 +188,18 @@ Total: 8 semanas
       <div className="grid grid-cols-2 gap-4">
         <div className="flex items-center gap-2 text-sm">
           <Mail className="size-4 text-muted-foreground" />
-          <a href={`mailto:${lead.email}`} className="text-primary hover:underline">
-            {lead.email}
-          </a>
+          {gmailComposeUrl ? (
+            <a
+              href={gmailComposeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              {lead.email}
+            </a>
+          ) : (
+            <span>{lead.email}</span>
+          )}
         </div>
         {lead.phone && (
           <div className="flex items-center gap-2 text-sm">
@@ -238,9 +275,14 @@ Total: 8 semanas
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="flex-1 bg-transparent">
+            <Button
+              variant="outline"
+              className="flex-1 bg-transparent"
+              onClick={handleOpenGmail}
+              disabled={!hasValidEmail}
+            >
               <MessageSquare className="size-4 mr-2" />
-              Email
+              Abrir en Gmail
             </Button>
             <Button variant="outline" className="flex-1 bg-transparent">
               <Phone className="size-4 mr-2" />
