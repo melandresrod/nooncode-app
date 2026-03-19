@@ -38,6 +38,7 @@ export interface Lead {
   createdAt: Date
   updatedAt: Date
   lastContactedAt?: Date
+  nextFollowUpAt?: Date
 }
 
 export interface LeadDraft extends Omit<
@@ -47,7 +48,9 @@ export interface LeadDraft extends Omit<
   source: LeadSourceInput
 }
 
-export type LeadUpdates = Partial<LeadDraft>
+export type LeadUpdates = Partial<Omit<LeadDraft, 'nextFollowUpAt'>> & {
+  nextFollowUpAt?: Date | null
+}
 
 export type LeadActivityType = 'created' | 'updated' | 'status_changed' | 'note_added'
   | 'proposal_created'

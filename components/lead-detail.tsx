@@ -3,6 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
+import {
+  formatLeadFollowUpDateTime,
+  getLeadFollowUpState,
+  parseDateTimeLocalValue,
+  toDateTimeLocalValue,
+} from '@/lib/leads/follow-up'
 import type {
   Lead,
   LeadActivity,
@@ -86,6 +92,7 @@ const leadFieldLabels: Record<string, string> = {
   notes: 'notas base',
   tags: 'tags',
   lastContactedAt: 'ultimo contacto',
+  nextFollowUpAt: 'proximo seguimiento',
 }
 
 const proposalStatusConfig: Record<ProposalStatus, { label: string; color: string }> = {
@@ -107,6 +114,24 @@ const assignmentStatusConfig: Record<LeadAssignmentStatus, { label: string; colo
     color: 'bg-primary/10 text-primary border-primary/20',
   },
 }
+
+const followUpStateConfig = {
+  scheduled: {
+    label: 'Seguimiento programado',
+    color: 'bg-sky-500/10 text-sky-700 border-sky-200',
+    helper: 'Hay un seguimiento agendado para este lead.',
+  },
+  due_today: {
+    label: 'Vence hoy',
+    color: 'bg-amber-500/10 text-amber-700 border-amber-200',
+    helper: 'El siguiente seguimiento vence hoy. No deberia quedar sin tocar.',
+  },
+  overdue: {
+    label: 'Atrasado',
+    color: 'bg-red-500/10 text-red-700 border-red-200',
+    helper: 'El seguimiento programado ya vencio y requiere accion comercial.',
+  },
+} as const
 
 function buildDefaultProposalTitle(lead: Lead) {
   return `Propuesta - ${lead.company || lead.name}`
@@ -263,6 +288,7 @@ function buildGmailComposeUrl(email: string): string {
 export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const { user } = useAuth()
   const {
+    updateLead,
     getLeadActivity,
     addLeadNote,
     getLeadProposals,
@@ -282,8 +308,11 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [isProposalsLoading, setIsProposalsLoading] = useState(true)
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [isSavingProposal, setIsSavingProposal] = useState(false)
+  const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
   const [isMutatingAssignment, setIsMutatingAssignment] = useState(false)
   const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState('activity')
+  const [followUpInput, setFollowUpInput] = useState(toDateTimeLocalValue(lead.nextFollowUpAt))
   const [proposalForm, setProposalForm] = useState({
     title: buildDefaultProposalTitle(lead),
     amount: lead.value.toString(),
@@ -292,6 +321,8 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const hasValidEmail = isValidLeadEmail(lead.email)
   const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
   const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
+  const followUpState = getLeadFollowUpState(lead.nextFollowUpAt)
+  const followUpInfo = followUpState ? followUpStateConfig[followUpState] : null
   const projectByProposalId = new Map(
     projects
       .filter((project) => project.sourceProposalId)
@@ -443,6 +474,10 @@ Total: 8 semanas
     }))
   }, [lead])
 
+  useEffect(() => {
+    setFollowUpInput(toDateTimeLocalValue(lead.nextFollowUpAt))
+  }, [lead.nextFollowUpAt])
+
   const handleSaveNote = async () => {
     const trimmedNote = noteText.trim()
 
@@ -461,6 +496,42 @@ Total: 8 semanas
       toast.error(error instanceof Error ? error.message : 'No se pudo guardar la nota')
     } finally {
       setIsSavingNote(false)
+    }
+  }
+
+  const handleSaveFollowUp = async () => {
+    const parsedFollowUp = parseDateTimeLocalValue(followUpInput)
+
+    if (!parsedFollowUp) {
+      toast.error('Ingresa una fecha y hora validas para el seguimiento')
+      return
+    }
+
+    setIsSavingFollowUp(true)
+
+    try {
+      await updateLead(lead.id, { nextFollowUpAt: parsedFollowUp })
+      toast.success('Seguimiento programado')
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el seguimiento')
+    } finally {
+      setIsSavingFollowUp(false)
+    }
+  }
+
+  const handleClearFollowUp = async () => {
+    setIsSavingFollowUp(true)
+
+    try {
+      await updateLead(lead.id, { nextFollowUpAt: null })
+      setFollowUpInput('')
+      toast.success('Seguimiento limpiado')
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo limpiar el seguimiento')
+    } finally {
+      setIsSavingFollowUp(false)
     }
   }
 
@@ -663,6 +734,43 @@ Total: 8 semanas
         </div>
       </div>
 
+      <div className="rounded-lg border bg-muted/20 p-4 space-y-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Calendar className="size-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Proximo seguimiento</span>
+            </div>
+            {followUpInfo && lead.nextFollowUpAt ? (
+              <>
+                <Badge variant="outline" className={followUpInfo.color}>
+                  {followUpInfo.label}
+                </Badge>
+                <p className="text-sm text-muted-foreground">
+                  {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {followUpInfo.helper}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aun no hay un seguimiento programado para este lead.
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setActiveTab('activity')}
+            disabled={isReleasedLeadPendingClaim}
+          >
+            <Calendar className="size-4 mr-2" />
+            {lead.nextFollowUpAt ? 'Reprogramar' : 'Programar'}
+          </Button>
+        </div>
+      </div>
+
       {/* Contact Info */}
       <div className="grid grid-cols-2 gap-4">
         <div className="flex items-center gap-2 text-sm">
@@ -702,6 +810,12 @@ Total: 8 semanas
             <span>Ultimo contacto: {lead.lastContactedAt.toLocaleDateString('es-MX')}</span>
           </div>
         )}
+        {lead.nextFollowUpAt && (
+          <div className="flex items-center gap-2 text-sm col-span-2">
+            <Calendar className="size-4 text-muted-foreground" />
+            <span>Proximo seguimiento: {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}</span>
+          </div>
+        )}
       </div>
 
       {/* Tags */}
@@ -726,7 +840,7 @@ Total: 8 semanas
       <Separator />
 
       {/* Actions Tabs */}
-      <Tabs defaultValue="activity" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full">
           <TabsTrigger value="activity" className="flex-1">Seguimiento</TabsTrigger>
           <TabsTrigger value="proposal" className="flex-1">Propuesta</TabsTrigger>
@@ -735,6 +849,49 @@ Total: 8 semanas
         </TabsList>
 
         <TabsContent value="activity" className="space-y-4 pt-4">
+          <Card className="gap-4 py-4">
+            <CardHeader className="px-4">
+              <CardTitle className="text-base">Programar siguiente seguimiento</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="lead-follow-up-at">Fecha y hora</Label>
+                <Input
+                  id="lead-follow-up-at"
+                  type="datetime-local"
+                  value={followUpInput}
+                  onChange={(event) => setFollowUpInput(event.target.value)}
+                  disabled={isReleasedLeadPendingClaim || isSavingFollowUp}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Define el siguiente toque comercial real para que el lead no quede sin seguimiento.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  onClick={handleSaveFollowUp}
+                  disabled={!followUpInput || isReleasedLeadPendingClaim || isSavingFollowUp}
+                >
+                  {isSavingFollowUp ? (
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                  ) : (
+                    <Calendar className="size-4 mr-2" />
+                  )}
+                  Guardar seguimiento
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClearFollowUp}
+                  disabled={!lead.nextFollowUpAt || isReleasedLeadPendingClaim || isSavingFollowUp}
+                >
+                  Limpiar seguimiento
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="space-y-3">
             <label className="text-sm font-medium">Registrar nota de seguimiento</label>
             <Textarea
@@ -1027,9 +1184,14 @@ Total: 8 semanas
               <Phone className="size-4 mr-2" />
               Llamar
             </Button>
-            <Button variant="outline" className="flex-1 bg-transparent" disabled={isReleasedLeadPendingClaim}>
+            <Button
+              variant="outline"
+              className="flex-1 bg-transparent"
+              onClick={() => setActiveTab('activity')}
+              disabled={isReleasedLeadPendingClaim}
+            >
               <Calendar className="size-4 mr-2" />
-              Agendar
+              {lead.nextFollowUpAt ? 'Reprogramar' : 'Agendar'}
             </Button>
           </div>
         </TabsContent>

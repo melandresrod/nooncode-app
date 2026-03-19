@@ -469,6 +469,62 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Completion status:
   - runtime validation closed for the commercial lead locking/release/claim slice
 
+### Session 022
+- Date: 2026-03-18
+- Route used: system-backend -> system-frontend -> system-docs
+- Objective: implement Phase 2I manual lead follow-up scheduling without reopening WhatsApp, proximity, reminders, or broader commercial automation
+- Implemented:
+  - `supabase/migrations/0012_phase_2i_lead_follow_up.sql`
+    - adds nullable `next_follow_up_at` to `public.leads`
+    - adds an index for scheduled follow-up lookups
+    - refreshes `collect_lead_update_fields()` so update activity records `nextFollowUpAt`
+  - `lib/server/leads/schema.ts`, `lib/server/leads/mappers.ts`, `lib/server/leads/repository.ts`, `lib/server/supabase/database.types.ts`, `lib/leads/serialization.ts`, `lib/types.ts`, and `lib/data-context.tsx`
+    - now carry `nextFollowUpAt` through the lead persistence contract
+    - allow explicit follow-up clearing through `null`
+  - `lib/leads/follow-up.ts`
+    - centralizes follow-up state derivation plus datetime formatting/parsing helpers
+  - `components/lead-detail.tsx`
+    - now lets sales schedule, reprogram, and clear the next follow-up datetime
+    - surfaces scheduled/today/overdue state in detail
+    - routes the existing `Agendar` CTA into the real follow-up flow
+  - `components/lead-card.tsx`
+    - now shows follow-up state and scheduled datetime when present
+- Scope boundary kept:
+  - included manual persisted follow-up scheduling on leads plus visible state in list/detail
+  - excluded WhatsApp, geolocation/radius, notifications/reminders, Google Calendar, Maxwell, and broader reporting changes
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+  - one new type error introduced during implementation (`nextFollowUpAt: null` on lead clear) was fixed in-session
+  - runtime validation is still pending until migration `0012` is pushed and the live app flow is exercised against the linked Supabase project
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - implementation complete
+  - runtime validation pending
+
+### Session 023
+- Date: 2026-03-18
+- Route used: system-testing
+- Objective: validate Phase 2I manual lead follow-up scheduling against the linked Supabase project and the local app runtime
+- Evidence gathered:
+  - pushed migration `0012_phase_2i_lead_follow_up.sql` to the linked Supabase project with `npx.cmd supabase db push --yes`
+  - created and ran `tmp_validate_lead_follow_up.mjs` against `http://127.0.0.1:3000` using a real Supabase SSR session for `juan@noon.app`
+  - confirmed a persisted QA lead could be created, then updated through `PATCH /api/leads/[leadId]` with `nextFollowUpAt`
+  - confirmed the same lead reread through `GET /api/leads` preserved the scheduled datetime after reload
+  - confirmed the same lead could be rescheduled, reread, then cleared back to `null`
+  - confirmed `GET /api/leads/[leadId]/activity` reflected `updated` entries whose `changedFields` include `nextFollowUpAt`
+  - attempted browser-level validation through temporary headless Edge + CDP automation in `tmp_validate_lead_follow_up_browser.mjs`, but the harness timed out before yielding stable DOM evidence
+  - cleaned temporary browser-validation QA leads from Supabase after the failed CDP attempt
+- Validation outcome:
+  - app-route runtime validation is complete for the persisted follow-up scheduling contract
+  - browser-level validation of the visible follow-up state in `/dashboard/leads` is still pending because the temporary CDP harness was not reliable enough to use as closing evidence
+- Completion status:
+  - partial runtime closure
+  - contract/persistence evidence complete
+  - browser-level UI evidence pending
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context

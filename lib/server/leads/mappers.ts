@@ -23,6 +23,7 @@ export function mapLeadRowToWire(row: LeadRowWithProfiles): LeadWire {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastContactedAt: row.last_contacted_at,
+    nextFollowUpAt: row.next_follow_up_at,
   }
 }
 
@@ -44,6 +45,7 @@ export function mapCreateLeadInputToInsert(
     notes: input.notes ?? null,
     tags: input.tags,
     last_contacted_at: input.lastContactedAt ?? null,
+    next_follow_up_at: input.nextFollowUpAt ?? null,
   }
 }
 
@@ -63,6 +65,9 @@ export function mapUpdateLeadInputToUpdate(input: UpdateLeadInput): LeadUpdate {
   if (input.assignedTo !== undefined) update.assigned_to = input.assignedTo ?? null
   if (input.lastContactedAt !== undefined) {
     update.last_contacted_at = input.lastContactedAt ?? null
+  }
+  if (input.nextFollowUpAt !== undefined) {
+    update.next_follow_up_at = input.nextFollowUpAt ?? null
   }
 
   return update

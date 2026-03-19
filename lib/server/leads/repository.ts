@@ -24,6 +24,7 @@ const leadSelect = `
   notes,
   tags,
   last_contacted_at,
+  next_follow_up_at,
   created_at,
   updated_at,
   assigned_profile:user_profiles!leads_assigned_to_fkey(legacy_mock_id, full_name)

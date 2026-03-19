@@ -120,6 +120,24 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - lets sales save proposals manually or from IA-generated content
   - tracks proposal status up to `handoff_ready`
   - surfaces proposal activity inside lead follow-up history
+- `supabase/migrations/0012_phase_2i_lead_follow_up.sql` adds:
+  - nullable `next_follow_up_at` on `public.leads`
+  - an index for scheduled follow-up queries
+  - a `collect_lead_update_fields()` refresh so lead update activity now records `nextFollowUpAt` changes
+- `lib/server/leads/schema.ts`, `lib/server/leads/mappers.ts`, `lib/server/leads/repository.ts`, `lib/leads/serialization.ts`, and `lib/data-context.tsx` now:
+  - carry `nextFollowUpAt` through the persisted lead contract
+  - allow clearing the follow-up datetime explicitly with `null`
+- `components/lead-detail.tsx` now:
+  - lets sales schedule or clear the next follow-up datetime from the lead detail
+  - shows explicit scheduled/today/overdue follow-up state
+  - routes the existing `Agendar` affordance into the real follow-up flow instead of leaving it inert
+- `components/lead-card.tsx` now:
+  - shows follow-up state plus scheduled datetime on lead cards when present
+- Runtime validation status for this 2I follow-up scheduling slice:
+  - migration `0012_phase_2i_lead_follow_up.sql` is applied to the linked Supabase project
+  - app-route runtime validation confirms a seller can schedule, reschedule, clear, and reread persisted `nextFollowUpAt`
+  - lead activity readback also confirms `nextFollowUpAt` changes are recorded in the persisted update history
+  - browser-level validation for the card/detail follow-up badges is still pending because the temporary CDP harness timed out before yielding stable evidence
 - `supabase/migrations/0005_phase_2d_projects.sql` adds:
   - enum `project_status`
   - table `public.projects`
@@ -294,6 +312,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - Developer task visibility alignment for `/dashboard/tasks` and the delivery summary on `/dashboard` now have runtime validation evidence in the live browser.
   - Developer delivery reporting alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
   - Reports analytics realism alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
+  - Manual lead follow-up scheduling is now implemented in repo code and has app-route runtime evidence, but browser-level UI validation is still pending before it can be treated as fully closed.
   - Remaining gaps are broader delivery persistence, other commercial actionability gaps, and removal of mixed-mode fallback dependencies.
 - Phase 3 - Leads accionables y cercania
   - Status: partial
@@ -326,11 +345,9 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   3. Keep the current PM/admin rollup behavior stable while mixed-mode gaps are reduced
 
 ## Suggested next implementation slice
-- Name: `Broader delivery persistence follow-up`
+- Name: `Phase 2I runtime closure`
 - Success criterion:
-  - the next chosen delivery slice is explicitly scoped before implementation
-  - existing PM/admin project rollup behavior remains stable while that new slice lands
-  - mixed-mode fallback boundaries remain explicit instead of getting blurrier
+  - `/dashboard/leads` and lead detail show honest scheduled/today/overdue state after reload in live browser validation
 - Current code status:
   - Phase 2E is implemented in repository code
   - migration `0006_phase_2e_tasks.sql` is applied to the linked Supabase project
@@ -342,8 +359,15 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - developer `/dashboard/tasks` now uses a persisted-only task source in Supabase mode and has direct live browser validation for `pedro@noon.app` and `laura@noon.app`
   - `/dashboard` delivery stats now derive from `projectBoardProjects` plus `taskBoardTasks`
   - `/dashboard/reports` now derives delivery analytics from role-visible persisted data in Supabase mode, derives monthly lead trend from visible lead `createdAt`, and uses explicit empty states where real reporting basis does not yet exist
+  - `/dashboard/leads` follow-up scheduling is implemented in repo code via `0012_phase_2i_lead_follow_up.sql`, lead contract updates, and lead detail/card UI
+  - migration `0012` is already applied to the linked Supabase project
+  - app-route runtime validation already confirms schedule, reschedule, clear, reload, and activity-history behavior for `juan@noon.app`
+  - only the browser-level UI evidence for the follow-up badges/state remains open
 - Explicitly excluded from that follow-up until scoped:
   - Phase 3 proximity/radius logic
+  - WhatsApp actionability
+  - automatic reminders or notifications
+  - calendar integrations
   - payments
   - commissions
   - rewards

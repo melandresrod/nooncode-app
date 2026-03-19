@@ -62,6 +62,12 @@
   - `/api/leads/[leadId]/release`
   - `/api/leads/[leadId]/claim`
   - proposal send now locks the lead, release exposes it to other sellers, and claim reassigns ownership with explicit assignment state in the UI
+- Lead follow-up scheduling now has an implemented repo path pending runtime validation:
+  - `supabase/migrations/0012_phase_2i_lead_follow_up.sql`
+  - `next_follow_up_at` persisted on `public.leads`
+  - `/api/leads/[leadId]` now accepts persisted follow-up scheduling updates
+  - `components/lead-detail.tsx` now edits and clears the next follow-up datetime
+  - `components/lead-card.tsx` now surfaces scheduled/today/overdue follow-up state
 - Lead-to-project conversion now has a real code path:
   - `supabase/migrations/0005_phase_2d_projects.sql`
   - `/api/projects`
@@ -111,6 +117,8 @@
 - Remaining non-project commercial and delivery domain data is still demo-state.
 - Maxwell has a real route shape but still lacks confirmed real business context wiring.
 - Leads support Gmail compose shortcuts from card/detail UI and now have a server-backed persistence path.
+- Next lead follow-up scheduling is implemented in repo code but still needs runtime validation against the linked Supabase project.
+- Migration `0012_phase_2i_lead_follow_up.sql` is already applied to the linked Supabase project, and app-route runtime validation now confirms that sales can schedule, reschedule, clear, and reread `nextFollowUpAt`; browser-level UI validation for the visible follow-up badges is still pending.
 
 ## Active risks
 - Repo is in a mixed real/mock state: auth is real-capable while business data still resets on reload.
@@ -136,8 +144,9 @@
 - Closed in runtime: developer task visibility alignment for `/dashboard/tasks` and developer delivery summary on `/dashboard`.
 - Closed in runtime: developer delivery reporting alignment on `/dashboard/reports`.
 - Closed in runtime: reports analytics realism alignment on `/dashboard/reports`.
+- Implemented in repo, runtime validation pending: Phase 2I manual lead follow-up scheduling.
 - Partial: Phase 3 "Leads accionables y cercania" because email/phone actions exist, but proximity, location, and WhatsApp are still missing.
-- Recommended next execution slice: choose the next sales-side realism slice after lead assignment control, such as automatic follow-up, WhatsApp/location actionability, or another bounded commercial workflow gap, without reopening the already-closed delivery/reporting alignments.
+- Recommended next execution slice: runtime-validate and close Phase 2I manual lead follow-up scheduling before opening another commercial realism slice.
 
 ## Operating rules
 - Treat auth/session as repo-proven when Supabase env is enabled.

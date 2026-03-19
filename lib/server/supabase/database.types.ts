@@ -95,6 +95,7 @@ export interface Database {
           notes: string | null
           tags: string[]
           last_contacted_at: string | null
+          next_follow_up_at: string | null
           created_at: string
           updated_at: string
         }
@@ -118,6 +119,7 @@ export interface Database {
           notes?: string | null
           tags?: string[]
           last_contacted_at?: string | null
+          next_follow_up_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -141,6 +143,7 @@ export interface Database {
           notes?: string | null
           tags?: string[]
           last_contacted_at?: string | null
+          next_follow_up_at?: string | null
           created_at?: string
           updated_at?: string
         }

@@ -20,6 +20,7 @@ export interface LeadWire {
   createdAt: string
   updatedAt: string
   lastContactedAt: string | null
+  nextFollowUpAt: string | null
 }
 
 export function deserializeLead(lead: LeadWire): Lead {
@@ -43,5 +44,6 @@ export function deserializeLead(lead: LeadWire): Lead {
     createdAt: new Date(lead.createdAt),
     updatedAt: new Date(lead.updatedAt),
     lastContactedAt: lead.lastContactedAt ? new Date(lead.lastContactedAt) : undefined,
+    nextFollowUpAt: lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt) : undefined,
   }
 }

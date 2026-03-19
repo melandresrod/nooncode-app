@@ -244,6 +244,7 @@ function mapLeadDraftToRequest(leadData: LeadDraft) {
     tags: leadData.tags,
     assignedTo: leadData.assignedTo ?? null,
     lastContactedAt: leadData.lastContactedAt?.toISOString() ?? null,
+    nextFollowUpAt: leadData.nextFollowUpAt?.toISOString() ?? null,
   }
 }
 
@@ -263,6 +264,9 @@ function mapLeadUpdatesToRequest(updates: LeadUpdates) {
   if (updates.assignedTo !== undefined) payload.assignedTo = updates.assignedTo ?? null
   if (updates.lastContactedAt !== undefined) {
     payload.lastContactedAt = updates.lastContactedAt?.toISOString() ?? null
+  }
+  if (updates.nextFollowUpAt !== undefined) {
+    payload.nextFollowUpAt = updates.nextFollowUpAt?.toISOString() ?? null
   }
 
   return payload
@@ -1014,6 +1018,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ...lead,
             ...updates,
             source: updates.source ? normalizeLeadSource(updates.source) : lead.source,
+            nextFollowUpAt:
+              updates.nextFollowUpAt === null
+                ? undefined
+                : updates.nextFollowUpAt ?? lead.nextFollowUpAt,
             updatedAt: new Date(),
           }
 

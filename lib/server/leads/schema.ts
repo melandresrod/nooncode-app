@@ -46,6 +46,7 @@ const baseLeadShape = {
   tags: z.array(z.string().trim().min(1).max(50)).max(12),
   assignedTo: z.string().uuid().optional().nullable(),
   lastContactedAt: z.string().datetime().optional().nullable(),
+  nextFollowUpAt: z.string().datetime().optional().nullable(),
 }
 
 export const createLeadSchema = z.object({
@@ -69,6 +70,7 @@ export const updateLeadSchema = z
     tags: baseLeadShape.tags.optional(),
     assignedTo: baseLeadShape.assignedTo,
     lastContactedAt: baseLeadShape.lastContactedAt,
+    nextFollowUpAt: baseLeadShape.nextFollowUpAt,
   })
   .refine((payload) => Object.keys(payload).length > 0, {
     message: 'At least one field is required.',

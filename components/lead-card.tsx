@@ -4,6 +4,7 @@ import React from "react"
 
 import type { Lead, LeadStatus } from '@/lib/types'
 import { useAuth } from '@/lib/auth-context'
+import { formatLeadFollowUpDateTime, getLeadFollowUpState } from '@/lib/leads/follow-up'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,12 @@ const assignmentStatusConfig = {
   released_no_response: { label: 'Liberado', color: 'bg-primary/10 text-primary border-primary/20' },
 } as const
 
+const followUpStateConfig = {
+  scheduled: { label: 'Seguimiento programado', color: 'bg-sky-500/10 text-sky-700 border-sky-200' },
+  due_today: { label: 'Vence hoy', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
+  overdue: { label: 'Atrasado', color: 'bg-red-500/10 text-red-700 border-red-200' },
+} as const
+
 function isValidLeadEmail(email: string | undefined): boolean {
   if (!email) {
     return false
@@ -83,6 +90,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
   const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
   const next = nextStatus[lead.status]
   const hasValidEmail = isValidLeadEmail(lead.email)
+  const followUpState = getLeadFollowUpState(lead.nextFollowUpAt)
   const isReleasedLeadPendingClaim =
     user?.role === 'sales' &&
     lead.assignmentStatus === 'released_no_response' &&
@@ -172,6 +180,18 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
                   {tag}
                 </Badge>
               ))}
+            </div>
+          )}
+
+          {lead.nextFollowUpAt && followUpState && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <Badge variant="outline" className={followUpStateConfig[followUpState].color}>
+                {followUpStateConfig[followUpState].label}
+              </Badge>
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Calendar className="size-3" />
+                {formatLeadFollowUpDateTime(lead.nextFollowUpAt)}
+              </span>
             </div>
           )}
         </div>
