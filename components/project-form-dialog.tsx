@@ -4,7 +4,7 @@ import React from "react"
 
 import { useEffect, useState } from 'react'
 import { useData } from '@/lib/data-context'
-import type { Project, ProjectDraft, ProjectStatus, ProjectUpdates } from '@/lib/types'
+import type { DeliveryUser, Project, ProjectDraft, ProjectStatus, ProjectUpdates } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -78,11 +78,11 @@ function createFormData(project?: Project): ProjectFormState {
 }
 
 export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFormDialogProps) {
-  const { addProject, updateProject, users } = useData()
+  const { addProject, updateProject, deliveryUsers } = useData()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const pms = users.filter((u) => u.role === 'pm' || u.role === 'admin')
-  const devs = users.filter((u) => u.role === 'developer')
+  const pms = deliveryUsers.filter((user) => user.role === 'pm' || user.role === 'admin')
+  const devs = deliveryUsers.filter((user): user is DeliveryUser => user.role === 'developer')
 
   const [formData, setFormData] = useState<ProjectFormState>(() => createFormData(editProject))
 

@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import type {
+  DeliveryUser,
   Lead,
   LeadActivity,
   LeadDraft,
@@ -97,6 +98,7 @@ interface DataContextType {
   redeemReward: (rewardId: string, userId: string) => boolean
 
   // Users
+  deliveryUsers: DeliveryUser[]
   users: User[]
   getUserById: (id: string) => User | undefined
 
@@ -317,6 +319,18 @@ function normalizeTaskAssignment(taskData: Pick<TaskDraft, 'assignedTo' | 'assig
   }
 }
 
+function mapMockUserToDeliveryUser(user: User): DeliveryUser {
+  return {
+    id: user.id,
+    profileId: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role as DeliveryUser['role'],
+    avatar: user.avatar,
+    isActive: true,
+  }
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
@@ -387,6 +401,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const taskActivityByTaskIdRef = useRef<Record<string, TaskActivity[]>>(taskActivityByTaskId)
   const [rewards] = useState<Reward[]>(mockRewards)
   const [users] = useState<User[]>(mockUsers)
+  const [deliveryUsers, setDeliveryUsers] = useState<DeliveryUser[]>(
+    () => mockUsers
+      .filter((user) => ['admin', 'pm', 'developer'].includes(user.role))
+      .map(mapMockUserToDeliveryUser)
+  )
   const [userPoints, setUserPoints] = useState<Record<string, number>>(() => {
     const points: Record<string, number> = {}
     mockUsers.forEach((u) => {
@@ -443,6 +462,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setTasks(mergeTasks(mockTasks, nextTasks))
   }, [])
 
+  const loadDeliveryUsers = useCallback(async () => {
+    const response = await fetch('/api/users/delivery', {
+      method: 'GET',
+      cache: 'no-store',
+    })
+    const payload = await readApiResponse<DeliveryUser[]>(response)
+    setDeliveryUsers(payload)
+  }, [])
+
   useEffect(() => {
     let isActive = true
 
@@ -452,6 +480,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setPersistedProjects([])
       setTasks(mockTasks)
       setPersistedTasks([])
+      setDeliveryUsers(
+        mockUsers
+          .filter((currentUser) => ['admin', 'pm', 'developer'].includes(currentUser.role))
+          .map(mapMockUserToDeliveryUser)
+      )
       setLeadActivityByLeadId(buildInitialMockLeadActivity(mockLeads))
       setLeadProposalsByLeadId({})
       setTaskActivityByTaskId({})
@@ -466,6 +499,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPersistedProjects([])
     setTasks(mockTasks)
     setPersistedTasks([])
+    setDeliveryUsers([])
     setLeadActivityByLeadId({})
     setLeadProposalsByLeadId({})
     setTaskActivityByTaskId({})
@@ -498,10 +532,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
+    if (user && ['admin', 'pm', 'developer'].includes(user.role)) {
+      loadDeliveryUsers()
+        .catch(() => {
+          if (isActive) {
+            setDeliveryUsers([])
+          }
+        })
+    }
+
     return () => {
       isActive = false
     }
-  }, [authMode, loadLeads, loadProjects, loadTasks])
+  }, [authMode, loadDeliveryUsers, loadLeads, loadProjects, loadTasks, user])
 
   const getLeadActivity = useCallback(async (leadId: string) => {
     if (authMode !== 'supabase') {
@@ -1627,6 +1670,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addTaskNote,
         rewards,
         redeemReward,
+        deliveryUsers,
         users,
         getUserById,
         userPoints,

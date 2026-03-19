@@ -547,6 +547,46 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Completion status:
   - runtime validation closed for Phase 2I manual lead follow-up scheduling
 
+### Session 025
+- Date: 2026-03-18
+- Route used: system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: align the delivery-facing user directory for `/dashboard/projects` and `/dashboard/tasks` with real `user_profiles` data without reopening settings, earnings, rewards, or broader user management
+- Implemented:
+  - `app/api/users/delivery/route.ts`
+    - new read-only delivery directory route guarded to `admin|pm|developer`
+  - `lib/server/profiles/repository.ts`
+    - new `listDeliveryUsers()` helper over active `user_profiles` rows for `admin|pm|developer`
+  - `lib/server/profiles/types.ts`
+    - delivery-directory contract for backend route output
+  - `lib/types.ts`
+    - shared client-facing `DeliveryUser` contract
+  - `lib/data-context.tsx`
+    - now loads `deliveryUsers` from `/api/users/delivery` in Supabase mode for delivery-capable roles
+    - keeps global `users` mock-backed so settings/earnings/rewards remain out of scope
+  - `app/dashboard/projects/page.tsx`
+    - now resolves PM and team-member display from `deliveryUsers`
+  - `components/project-form-dialog.tsx`
+    - now uses `deliveryUsers` for PM and developer selection
+  - `components/task-form-dialog.tsx`
+    - now uses `deliveryUsers` for developer assignee selection
+- Validation outcome:
+  - route/runtime validation against the live app + Supabase confirmed:
+    - `admin@noon.app`, `ana@noon.app`, and `pedro@noon.app` can read `GET /api/users/delivery`
+    - `juan@noon.app` receives `403`
+    - the route returns only delivery roles plus both legacy-compatible `id` and real `profileId`
+  - browser-level validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `/dashboard/projects` fetches `/api/users/delivery`
+    - the project edit PM selector renders names from the delivery directory
+    - `/dashboard/tasks` fetches `/api/users/delivery`
+    - the task create assignee selector renders developer names from the delivery directory
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for delivery user directory alignment in `/dashboard/projects` and `/dashboard/tasks`
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context

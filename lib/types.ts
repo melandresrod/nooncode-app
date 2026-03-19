@@ -12,6 +12,18 @@ export interface User {
   balance: number
 }
 
+export type DeliveryDirectoryRole = Extract<UserRole, 'admin' | 'pm' | 'developer'>
+
+export interface DeliveryUser {
+  id: string
+  profileId: string
+  email: string
+  name: string
+  role: DeliveryDirectoryRole
+  avatar?: string
+  isActive: boolean
+}
+
 // Lead Types
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
 export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other'

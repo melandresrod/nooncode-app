@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth, canManageTeam } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
-import type { Project, ProjectStatus, ProjectTaskActivity, Task } from '@/lib/types'
+import type { DeliveryUser, Project, ProjectStatus, ProjectTaskActivity, Task } from '@/lib/types'
 import { calculateProjectProgress, deriveProjectDisplayStatus } from '@/lib/projects/progress'
 import { ProjectFormDialog } from '@/components/project-form-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,7 +52,7 @@ const statusConfig: Record<ProjectStatus, { label: string; color: string }> = {
   completed: { label: 'Completado', color: 'bg-emerald-500/10 text-emerald-700' },
 }
 
-function getProjectPmName(project: Project, users: { id: string; name: string }[]) {
+function getProjectPmName(project: Project, deliveryUsers: DeliveryUser[]) {
   if (project.pmName) {
     return project.pmName
   }
@@ -61,14 +61,14 @@ function getProjectPmName(project: Project, users: { id: string; name: string }[
     return undefined
   }
 
-  return users.find((user) => user.id === project.pmId)?.name
+  return deliveryUsers.find((user) => user.id === project.pmId)?.name
 }
 
 export default function ProjectsPage() {
   const { user } = useAuth()
   const {
     projectBoardProjects,
-    users,
+    deliveryUsers,
     getTasksByProject,
     getProjectActivity,
     updateProjectStatus,
@@ -209,10 +209,10 @@ export default function ProjectsPage() {
                           <ProjectCard
                             key={project.id}
                             project={project}
-                            users={users}
+                            deliveryUsers={deliveryUsers}
                             progress={getProjectProgress(project.id)}
                             taskCount={getTasksByProject(project.id).length}
-                            pmName={getProjectPmName(project, users)}
+                            pmName={getProjectPmName(project, deliveryUsers)}
                             onClick={() => setSelectedProjectId(project.id)}
                           />
                         ))}
@@ -313,7 +313,7 @@ export default function ProjectsPage() {
             <ProjectDetail
               project={selectedProject}
               tasks={getTasksByProject(selectedProject.id)}
-              users={users}
+              deliveryUsers={deliveryUsers}
               getProjectActivity={getProjectActivity}
               onStatusChange={handleStatusChange}
               canManageProjects={canManageProjects}
@@ -327,15 +327,17 @@ export default function ProjectsPage() {
 
 interface ProjectCardProps {
   project: Project
-  users: { id: string; name: string }[]
+  deliveryUsers: DeliveryUser[]
   progress: number
   taskCount: number
   pmName?: string
   onClick: () => void
 }
 
-function ProjectCard({ project, users, progress, taskCount, pmName, onClick }: ProjectCardProps) {
-  const teamMembers = project.teamIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
+function ProjectCard({ project, deliveryUsers, progress, taskCount, pmName, onClick }: ProjectCardProps) {
+  const teamMembers = project.teamIds
+    .map((id) => deliveryUsers.find((user) => user.id === id))
+    .filter((member): member is DeliveryUser => Boolean(member))
 
   return (
     <Card
@@ -400,7 +402,7 @@ function ProjectCard({ project, users, progress, taskCount, pmName, onClick }: P
 interface ProjectDetailProps {
   project: Project
   tasks: Task[]
-  users: { id: string; name: string }[]
+  deliveryUsers: DeliveryUser[]
   getProjectActivity: (projectId: string) => Promise<ProjectTaskActivity[]>
   onStatusChange: (projectId: string, newStatus: ProjectStatus) => Promise<void>
   canManageProjects: boolean
@@ -409,7 +411,7 @@ interface ProjectDetailProps {
 function ProjectDetail({
   project,
   tasks,
-  users,
+  deliveryUsers,
   getProjectActivity,
   onStatusChange,
   canManageProjects,
@@ -418,8 +420,10 @@ function ProjectDetail({
   const completedTasks = tasks.filter((t) => t.status === 'done').length
   const progress = calculateProjectProgress(tasks)
   const displayStatus = deriveProjectDisplayStatus(project.status, tasks)
-  const teamMembers = project.teamIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
-  const pmName = getProjectPmName(project, users)
+  const teamMembers = project.teamIds
+    .map((id) => deliveryUsers.find((user) => user.id === id))
+    .filter((member): member is DeliveryUser => Boolean(member))
+  const pmName = getProjectPmName(project, deliveryUsers)
 
   const tasksByStatus = {
     todo: tasks.filter((t) => t.status === 'todo'),

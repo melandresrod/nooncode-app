@@ -223,6 +223,19 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - self-select/self-limited-update RLS policies
   - `is_active`, locale, timezone, avatar, and last-login fields
 - `scripts/seed-phase-1a-users.ts` creates/updates auth users and linked `user_profiles` rows from the legacy mock user list.
+- `app/api/users/delivery/route.ts` now provides:
+  - `GET /api/users/delivery`
+  - role-guarded read access for `admin|pm|developer`
+  - a delivery-only directory contract with legacy-compatible `id` plus real `profileId`
+- `lib/server/profiles/repository.ts` now:
+  - lists active `admin|pm|developer` profiles from `user_profiles`
+  - maps them into a delivery-scoped directory contract for client use
+- `lib/data-context.tsx` now:
+  - loads `deliveryUsers` from `/api/users/delivery` in `supabase` mode for delivery-capable roles
+  - keeps global `users` mock-backed for settings/earnings/rewards so this slice stays bounded
+- `app/dashboard/projects/page.tsx`, `components/project-form-dialog.tsx`, and `components/task-form-dialog.tsx` now:
+  - resolve PMs, team members, and assignee selectors from `deliveryUsers`
+  - stop depending on `mockUsers` for the validated delivery surfaces
 - `QA_AUTH_RUNTIME_CHECKLIST.md` documents runtime validation steps for:
   - login
   - dashboard access with session
@@ -250,6 +263,8 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - `/dashboard/reports` now consumes the same developer-visible project/task truth, and browser-level runtime validation confirms that developer delivery KPIs no longer report mock active projects or completed tasks
   - `/dashboard/reports` no longer hardcodes demo monthly sales/revenue series; it now derives a real monthly lead trend from visible lead `createdAt`, keeps monthly revenue explicitly disabled until a real close-date source exists, and uses honest empty states for tabs without sufficient visible data
   - browser-level runtime validation now also exists for reports analytics realism: `ana@noon.app` and `pedro@noon.app` see the persisted project-status chart in the `Proyectos` tab, while `laura@noon.app` sees the explicit empty state
+  - delivery user directory alignment is now implemented for delivery surfaces only: `/dashboard/projects` and `/dashboard/tasks` fetch `/api/users/delivery`, and the PM/assignee selectors now use persisted `user_profiles` rather than `mockUsers`
+  - browser-level runtime validation now also exists for that directory alignment: `ana@noon.app` loaded both delivery pages, the browser requested `/api/users/delivery`, the project edit PM selector rendered the real directory names, and the task create assignee selector rendered the real developer directory
   - broader delivery planning and subtasks are not migrated yet
 - Runtime validation evidence now exists for the current 2E slice:
   - live project `2f39ac50-1bce-4364-9133-1317160d8a5a` is persisted in the linked Supabase project
@@ -263,6 +278,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - assigned developer `pedro@noon.app` could also read and create task activity on the same task
   - unrelated developer `laura@noon.app` received `Task not found.` on read/write because task visibility was filtered out by RLS before route-level developer checks
 - Rewards are still seeded from `mockRewards`.
+- `/dashboard/settings` user management and role-switching still remain mock-first even though delivery surfaces now consume a real delivery-only user directory.
 - Dashboard/user balance/points still depend on mock-derived state.
 - Reward/points mutations remain client-only.
 - Reloading still loses non-lead, non-project, non-task domain changes because there is no confirmed persistence layer for those entities.
@@ -313,6 +329,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - Developer delivery reporting alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
   - Reports analytics realism alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
   - Manual lead follow-up scheduling now has full runtime evidence in the active local flow, including browser-level validation for card/detail follow-up state and reload persistence.
+  - Delivery user directory alignment for `/dashboard/projects` and `/dashboard/tasks` now has runtime validation evidence at both the route contract layer and the live browser selector layer.
   - Remaining gaps are broader delivery persistence, other commercial actionability gaps, and removal of mixed-mode fallback dependencies.
 - Phase 3 - Leads accionables y cercania
   - Status: partial
@@ -381,7 +398,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - `lib/data-context.tsx` still centralizes multiple domains in a way that will complicate partial migration
 - Medium:
   - `switchRole()` remains a mock-only utility, which can confuse settings/admin behavior in mixed mode
-  - page-level features may still rely on mock assumptions even with real auth active
+  - page-level features outside the validated delivery surfaces may still rely on mock assumptions even with real auth active
   - no automated tests were found to protect the migration from mock data to server data
 - Low:
   - older docs/handoffs still describe auth as mock-only

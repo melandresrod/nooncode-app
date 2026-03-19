@@ -5,7 +5,7 @@ import React from "react"
 import { useState } from 'react'
 import { useData } from '@/lib/data-context'
 import { useAuth } from '@/lib/auth-context'
-import type { TaskDraft, TaskStatus, TaskPriority, TaskUpdates } from '@/lib/types'
+import type { DeliveryUser, TaskDraft, TaskStatus, TaskPriority, TaskUpdates } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -74,10 +74,10 @@ function createEmptyFormData(projectId = ''): TaskFormState {
 
 export function TaskFormDialog({ open, onOpenChange, projectId, editTask }: TaskFormDialogProps) {
   const { authMode } = useAuth()
-  const { addTask, updateTask, users, projects } = useData()
+  const { addTask, updateTask, deliveryUsers, projects } = useData()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const devs = users.filter((u) => u.role === 'developer')
+  const devs = deliveryUsers.filter((user): user is DeliveryUser => user.role === 'developer')
   const availableProjects =
     authMode === 'supabase'
       ? projects.filter((project) => isUuid(project.id))
