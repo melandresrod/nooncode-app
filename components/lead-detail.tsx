@@ -1,9 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import type { Lead, LeadStatus } from '@/lib/types'
+import { useEffect, useState } from 'react'
+import { useData } from '@/lib/data-context'
+import type { Lead, LeadActivity, LeadProposal, LeadStatus, ProposalStatus } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,12 +33,15 @@ import {
   Send,
   Copy,
   CheckCircle2,
+  History,
+  Loader2,
+  ArrowRightLeft,
+  FolderKanban,
 } from 'lucide-react'
 
 interface LeadDetailProps {
   lead: Lead
-  onStatusChange: (leadId: string, newStatus: LeadStatus) => void
-  onClose: () => void
+  onStatusChange: (leadId: string, newStatus: LeadStatus) => Promise<Lead> | void
 }
 
 const statusConfig: Record<LeadStatus, { label: string; color: string }> = {
@@ -56,6 +63,146 @@ const sourceLabels: Record<string, string> = {
   other: 'Otro',
 }
 
+const leadFieldLabels: Record<string, string> = {
+  name: 'nombre',
+  email: 'email',
+  phone: 'telefono',
+  company: 'empresa',
+  source: 'origen',
+  score: 'score',
+  value: 'valor',
+  assignedTo: 'asignacion',
+  notes: 'notas base',
+  tags: 'tags',
+  lastContactedAt: 'ultimo contacto',
+}
+
+const proposalStatusConfig: Record<ProposalStatus, { label: string; color: string }> = {
+  draft: { label: 'Borrador', color: 'bg-slate-500/10 text-slate-700' },
+  sent: { label: 'Enviada', color: 'bg-blue-500/10 text-blue-700' },
+  accepted: { label: 'Aceptada', color: 'bg-emerald-500/10 text-emerald-700' },
+  rejected: { label: 'Rechazada', color: 'bg-red-500/10 text-red-700' },
+  handoff_ready: { label: 'Lista para hand-off', color: 'bg-primary/10 text-primary' },
+}
+
+function buildDefaultProposalTitle(lead: Lead) {
+  return `Propuesta - ${lead.company || lead.name}`
+}
+
+function getChangedFields(metadata: LeadActivity['metadata']): string[] {
+  const changedFields = metadata?.changedFields
+
+  if (!Array.isArray(changedFields)) {
+    return []
+  }
+
+  return changedFields.filter((value): value is string => typeof value === 'string')
+}
+
+function getStatusTransition(metadata: LeadActivity['metadata']) {
+  const fromStatus = metadata?.fromStatus
+  const toStatus = metadata?.toStatus
+
+  return {
+    fromStatus: typeof fromStatus === 'string' ? (fromStatus as LeadStatus) : null,
+    toStatus: typeof toStatus === 'string' ? (toStatus as LeadStatus) : null,
+  }
+}
+
+function getProposalStatusTransition(metadata: LeadActivity['metadata']) {
+  const fromStatus = metadata?.fromStatus
+  const toStatus = metadata?.toStatus
+
+  return {
+    fromStatus: typeof fromStatus === 'string' ? (fromStatus as ProposalStatus) : null,
+    toStatus: typeof toStatus === 'string' ? (toStatus as ProposalStatus) : null,
+  }
+}
+
+function formatActivityTitle(activity: LeadActivity) {
+  if (activity.type === 'created') {
+    return 'Lead creado'
+  }
+
+  if (activity.type === 'note_added') {
+    return 'Nota agregada'
+  }
+
+  if (activity.type === 'status_changed') {
+    const { fromStatus, toStatus } = getStatusTransition(activity.metadata)
+    const fromLabel = fromStatus ? statusConfig[fromStatus].label : 'Sin estado'
+    const toLabel = toStatus ? statusConfig[toStatus].label : 'Actualizado'
+    return `Estado: ${fromLabel} -> ${toLabel}`
+  }
+
+  if (activity.type === 'proposal_created') {
+    const title = typeof activity.metadata?.title === 'string' ? activity.metadata.title : 'Sin titulo'
+    return `Propuesta creada: ${title}`
+  }
+
+  if (activity.type === 'proposal_status_changed') {
+    const { fromStatus, toStatus } = getProposalStatusTransition(activity.metadata)
+    const fromLabel = fromStatus ? proposalStatusConfig[fromStatus].label : 'Sin estado'
+    const toLabel = toStatus ? proposalStatusConfig[toStatus].label : 'Actualizado'
+    return `Propuesta: ${fromLabel} -> ${toLabel}`
+  }
+
+  if (activity.type === 'project_created') {
+    const projectName = typeof activity.metadata?.projectName === 'string'
+      ? activity.metadata.projectName
+      : 'Sin nombre'
+    return `Proyecto creado: ${projectName}`
+  }
+
+  const changedFields = getChangedFields(activity.metadata)
+
+  if (changedFields.length === 0) {
+    return 'Lead actualizado'
+  }
+
+  const label = changedFields
+    .map((field) => leadFieldLabels[field] ?? field)
+    .join(', ')
+
+  return `Actualizacion: ${label}`
+}
+
+function formatActivityBody(activity: LeadActivity) {
+  if (activity.type === 'note_added') {
+    return activity.noteBody ?? ''
+  }
+
+  if (activity.type === 'created') {
+    return 'El lead quedo registrado en el pipeline persistente.'
+  }
+
+  if (activity.type === 'status_changed') {
+    return `Movimiento registrado por ${activity.actorName}.`
+  }
+
+  if (activity.type === 'proposal_created') {
+    return 'La propuesta comercial quedo vinculada al lead y lista para seguimiento.'
+  }
+
+  if (activity.type === 'proposal_status_changed') {
+    return `Cambio de propuesta registrado por ${activity.actorName}.`
+  }
+
+  if (activity.type === 'project_created') {
+    return 'El hand-off comercial se convirtio en un proyecto persistente para delivery.'
+  }
+
+  const changedFields = getChangedFields(activity.metadata)
+
+  if (changedFields.length === 0) {
+    return 'Se actualizaron datos del lead.'
+  }
+
+  return `Campos tocados: ${changedFields
+    .map((field) => leadFieldLabels[field] ?? field)
+    .join(', ')}.`
+}
+
 function isValidLeadEmail(email: string | undefined): boolean {
   if (!email) {
     return false
@@ -74,12 +221,38 @@ function buildGmailComposeUrl(email: string): string {
   return `https://mail.google.com/mail/?${params.toString()}`
 }
 
-export function LeadDetail({ lead, onStatusChange, onClose }: LeadDetailProps) {
+export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
+  const {
+    getLeadActivity,
+    addLeadNote,
+    getLeadProposals,
+    addLeadProposal,
+    updateLeadProposalStatus,
+    createProjectFromProposal,
+    projects,
+  } = useData()
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedContent, setGeneratedContent] = useState('')
   const [noteText, setNoteText] = useState('')
+  const [activities, setActivities] = useState<LeadActivity[]>([])
+  const [proposals, setProposals] = useState<LeadProposal[]>([])
+  const [isActivityLoading, setIsActivityLoading] = useState(true)
+  const [isProposalsLoading, setIsProposalsLoading] = useState(true)
+  const [isSavingNote, setIsSavingNote] = useState(false)
+  const [isSavingProposal, setIsSavingProposal] = useState(false)
+  const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
+  const [proposalForm, setProposalForm] = useState({
+    title: buildDefaultProposalTitle(lead),
+    amount: lead.value.toString(),
+    body: '',
+  })
   const hasValidEmail = isValidLeadEmail(lead.email)
   const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
+  const projectByProposalId = new Map(
+    projects
+      .filter((project) => project.sourceProposalId)
+      .map((project) => [project.sourceProposalId as string, project])
+  )
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-500/10'
@@ -151,6 +324,174 @@ Total: 8 semanas
     }
 
     window.open(buildGmailComposeUrl(lead.email), '_blank', 'noopener,noreferrer')
+  }
+
+  useEffect(() => {
+    let isActive = true
+
+    setIsActivityLoading(true)
+
+    getLeadActivity(lead.id)
+      .then((nextActivities) => {
+        if (isActive) {
+          setActivities(nextActivities)
+        }
+      })
+      .catch((error) => {
+        if (isActive) {
+          toast.error(error instanceof Error ? error.message : 'No se pudo cargar el historial')
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsActivityLoading(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [getLeadActivity, lead.id, lead.updatedAt])
+
+  useEffect(() => {
+    let isActive = true
+
+    setIsProposalsLoading(true)
+
+    getLeadProposals(lead.id)
+      .then((nextProposals) => {
+        if (isActive) {
+          setProposals(nextProposals)
+        }
+      })
+      .catch((error) => {
+        if (isActive) {
+          toast.error(error instanceof Error ? error.message : 'No se pudieron cargar las propuestas')
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsProposalsLoading(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [getLeadProposals, lead.id, lead.updatedAt])
+
+  useEffect(() => {
+    setProposalForm((prev) => ({
+      title: prev.title || buildDefaultProposalTitle(lead),
+      amount: prev.amount || lead.value.toString(),
+      body: prev.body,
+    }))
+  }, [lead])
+
+  const handleSaveNote = async () => {
+    const trimmedNote = noteText.trim()
+
+    if (!trimmedNote) {
+      return
+    }
+
+    setIsSavingNote(true)
+
+    try {
+      const activity = await addLeadNote(lead.id, trimmedNote)
+      setActivities((prev) => [activity, ...prev])
+      toast.success('Nota guardada')
+      setNoteText('')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la nota')
+    } finally {
+      setIsSavingNote(false)
+    }
+  }
+
+  const handleSaveProposal = async () => {
+    const title = proposalForm.title.trim()
+    const body = proposalForm.body.trim()
+    const amount = Number.parseFloat(proposalForm.amount)
+
+    if (!title || !body) {
+      return
+    }
+
+    setIsSavingProposal(true)
+
+    try {
+      const proposal = await addLeadProposal(lead.id, {
+        title,
+        body,
+        amount: Number.isFinite(amount) ? amount : 0,
+        currency: 'USD',
+        status: 'draft',
+      })
+      setProposals((prev) => [proposal, ...prev])
+      toast.success('Propuesta guardada')
+      setProposalForm({
+        title: buildDefaultProposalTitle(lead),
+        amount: lead.value.toString(),
+        body: '',
+      })
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la propuesta')
+    } finally {
+      setIsSavingProposal(false)
+    }
+  }
+
+  const handleSaveGeneratedProposal = async () => {
+    if (!generatedContent.trim()) {
+      return
+    }
+
+    setIsSavingProposal(true)
+
+    try {
+      const proposal = await addLeadProposal(lead.id, {
+        title: buildDefaultProposalTitle(lead),
+        body: generatedContent,
+        amount: lead.value,
+        currency: 'USD',
+        status: 'draft',
+      })
+      setProposals((prev) => [proposal, ...prev])
+      toast.success('Propuesta guardada desde IA')
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar la propuesta')
+    } finally {
+      setIsSavingProposal(false)
+    }
+  }
+
+  const handleProposalStatusChange = async (proposalId: string, status: ProposalStatus) => {
+    try {
+      const updatedProposal = await updateLeadProposalStatus(lead.id, proposalId, status)
+      setProposals((prev) =>
+        prev.map((proposal) => (proposal.id === proposalId ? updatedProposal : proposal))
+      )
+      toast.success('Estado de propuesta actualizado')
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la propuesta')
+    }
+  }
+
+  const handleCreateProject = async (proposalId: string) => {
+    setCreatingProjectProposalId(proposalId)
+
+    try {
+      const project = await createProjectFromProposal(lead.id, proposalId)
+      toast.success(`Proyecto listo: ${project.name}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo crear el proyecto')
+    } finally {
+      setCreatingProjectProposalId(null)
+    }
   }
 
   return (
@@ -247,12 +588,251 @@ Total: 8 semanas
       <Separator />
 
       {/* Actions Tabs */}
-      <Tabs defaultValue="status" className="w-full">
+      <Tabs defaultValue="activity" className="w-full">
         <TabsList className="w-full">
+          <TabsTrigger value="activity" className="flex-1">Seguimiento</TabsTrigger>
+          <TabsTrigger value="proposal" className="flex-1">Propuesta</TabsTrigger>
           <TabsTrigger value="status" className="flex-1">Estado</TabsTrigger>
           <TabsTrigger value="ai" className="flex-1">IA Asistente</TabsTrigger>
-          <TabsTrigger value="notes" className="flex-1">Agregar Nota</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="activity" className="space-y-4 pt-4">
+          <div className="space-y-3">
+            <label className="text-sm font-medium">Registrar nota de seguimiento</label>
+            <Textarea
+              placeholder="Escribe una nota sobre este lead..."
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              rows={4}
+            />
+            <Button onClick={handleSaveNote} disabled={!noteText.trim() || isSavingNote}>
+              {isSavingNote ? (
+                <Loader2 className="size-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4 mr-2" />
+              )}
+              Guardar nota
+            </Button>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <History className="size-4 text-muted-foreground" />
+              <p className="text-sm font-medium">Historial de actividad</p>
+            </div>
+
+            {isActivityLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Cargando historial...
+              </div>
+            ) : activities.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Aun no hay actividad registrada para este lead.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{formatActivityTitle(activity)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {activity.actorName} - {activity.createdAt.toLocaleString('es-MX')}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="capitalize">
+                        {activity.type === 'note_added' ? 'Nota' : activity.type.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {formatActivityBody(activity)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="proposal" className="space-y-4 pt-4">
+          <Card className="gap-4 py-4">
+            <CardHeader className="px-4">
+              <CardTitle className="text-base">Registrar propuesta comercial</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="proposal-title">Titulo</Label>
+                  <Input
+                    id="proposal-title"
+                    value={proposalForm.title}
+                    onChange={(event) =>
+                      setProposalForm((prev) => ({ ...prev, title: event.target.value }))
+                    }
+                    placeholder="Propuesta - Cliente"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proposal-amount">Monto estimado</Label>
+                  <Input
+                    id="proposal-amount"
+                    type="number"
+                    min="0"
+                    value={proposalForm.amount}
+                    onChange={(event) =>
+                      setProposalForm((prev) => ({ ...prev, amount: event.target.value }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="proposal-body">Contenido</Label>
+                  {generatedContent && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setProposalForm((prev) => ({
+                          ...prev,
+                          body: generatedContent,
+                          title: prev.title || buildDefaultProposalTitle(lead),
+                          amount: prev.amount || lead.value.toString(),
+                        }))
+                      }
+                    >
+                      Usar contenido IA
+                    </Button>
+                  )}
+                </div>
+                <Textarea
+                  id="proposal-body"
+                  value={proposalForm.body}
+                  onChange={(event) =>
+                    setProposalForm((prev) => ({ ...prev, body: event.target.value }))
+                  }
+                  placeholder="Describe alcance, inversion y siguientes pasos..."
+                  rows={8}
+                />
+              </div>
+
+              <Button
+                onClick={handleSaveProposal}
+                disabled={!proposalForm.title.trim() || !proposalForm.body.trim() || isSavingProposal}
+              >
+                {isSavingProposal ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="size-4 mr-2" />
+                )}
+                Guardar propuesta
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <ArrowRightLeft className="size-4 text-muted-foreground" />
+              <p className="text-sm font-medium">Hand-off comercial</p>
+            </div>
+
+            {isProposalsLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Cargando propuestas...
+              </div>
+            ) : proposals.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Aun no hay propuestas persistidas para este lead.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {proposals.map((proposal) => (
+                  <div key={proposal.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{proposal.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {proposal.currency} ${proposal.amount.toLocaleString()} - {proposal.createdAt.toLocaleDateString('es-MX')}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className={proposalStatusConfig[proposal.status].color}>
+                        {proposalStatusConfig[proposal.status].label}
+                      </Badge>
+                    </div>
+
+                    <p className="text-sm whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                      {proposal.body}
+                    </p>
+
+                    {projectByProposalId.get(proposal.id) && (
+                      <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
+                        <FolderKanban className="size-4" />
+                        Proyecto creado: {projectByProposalId.get(proposal.id)?.name}
+                      </div>
+                    )}
+
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                      <div className="text-xs text-muted-foreground">
+                        {projectByProposalId.get(proposal.id)
+                          ? 'Hand-off convertido y persistido en proyectos.'
+                          : proposal.handoffReadyAt
+                          ? `Hand-off listo desde ${proposal.handoffReadyAt.toLocaleString('es-MX')}`
+                          : proposal.acceptedAt
+                            ? `Aceptada el ${proposal.acceptedAt.toLocaleString('es-MX')}`
+                            : proposal.sentAt
+                              ? `Enviada el ${proposal.sentAt.toLocaleString('es-MX')}`
+                              : 'Aun en preparacion comercial'}
+                      </div>
+                      <Select
+                        value={proposal.status}
+                        onValueChange={(value) =>
+                          handleProposalStatusChange(proposal.id, value as ProposalStatus)
+                        }
+                      >
+                        <SelectTrigger className="w-full md:w-[220px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(proposalStatusConfig).map(([status, config]) => (
+                            <SelectItem key={status} value={status}>
+                              {config.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {proposal.status === 'handoff_ready' && (
+                      <Button
+                        type="button"
+                        variant={projectByProposalId.get(proposal.id) ? 'secondary' : 'default'}
+                        onClick={() => handleCreateProject(proposal.id)}
+                        disabled={
+                          creatingProjectProposalId === proposal.id ||
+                          Boolean(projectByProposalId.get(proposal.id))
+                        }
+                      >
+                        {creatingProjectProposalId === proposal.id ? (
+                          <Loader2 className="size-4 mr-2 animate-spin" />
+                        ) : (
+                          <FolderKanban className="size-4 mr-2" />
+                        )}
+                        {projectByProposalId.get(proposal.id) ? 'Proyecto creado' : 'Crear proyecto'}
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
 
         <TabsContent value="status" className="space-y-4 pt-4">
           <div className="space-y-2">
@@ -338,31 +918,27 @@ Total: 8 semanas
               <div className="p-4 bg-muted/50 rounded-lg max-h-64 overflow-y-auto">
                 <pre className="text-sm whitespace-pre-wrap font-sans">{generatedContent}</pre>
               </div>
-              <Button className="w-full">
-                <Send className="size-4 mr-2" />
-                Enviar al cliente
-              </Button>
+              <div className="flex gap-2">
+                <Button className="flex-1">
+                  <Send className="size-4 mr-2" />
+                  Enviar al cliente
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 bg-transparent"
+                  onClick={handleSaveGeneratedProposal}
+                  disabled={isSavingProposal}
+                >
+                  {isSavingProposal ? (
+                    <Loader2 className="size-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileText className="size-4 mr-2" />
+                  )}
+                  Guardar propuesta
+                </Button>
+              </div>
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="notes" className="space-y-4 pt-4">
-          <Textarea
-            placeholder="Escribe una nota sobre este lead..."
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            rows={4}
-          />
-          <Button
-            onClick={() => {
-              toast.success('Nota guardada')
-              setNoteText('')
-            }}
-            disabled={!noteText.trim()}
-          >
-            <CheckCircle2 className="size-4 mr-2" />
-            Guardar nota
-          </Button>
         </TabsContent>
       </Tabs>
     </div>

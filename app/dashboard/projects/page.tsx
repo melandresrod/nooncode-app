@@ -1,9 +1,11 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth, canManageTeam } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
-import type { Project, ProjectStatus, Task } from '@/lib/types'
+import type { Project, ProjectStatus, ProjectTaskActivity, Task } from '@/lib/types'
+import { calculateProjectProgress, deriveProjectDisplayStatus } from '@/lib/projects/progress'
+import { ProjectFormDialog } from '@/components/project-form-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,6 +13,7 @@ import { Progress } from '@/components/ui/progress'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
@@ -20,14 +23,15 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 import {
   FolderKanban,
   Clock,
-  CheckCircle2,
   AlertTriangle,
   Users,
   Calendar,
   DollarSign,
+  MessageSquareText,
   Plus,
   ArrowRight,
 } from 'lucide-react'
@@ -48,44 +52,71 @@ const statusConfig: Record<ProjectStatus, { label: string; color: string }> = {
   completed: { label: 'Completado', color: 'bg-emerald-500/10 text-emerald-700' },
 }
 
+function getProjectPmName(project: Project, users: { id: string; name: string }[]) {
+  if (project.pmName) {
+    return project.pmName
+  }
+
+  if (!project.pmId) {
+    return undefined
+  }
+
+  return users.find((user) => user.id === project.pmId)?.name
+}
+
 export default function ProjectsPage() {
   const { user } = useAuth()
-  const { projects, users, getTasksByProject, updateProjectStatus } = useData()
+  const {
+    projectBoardProjects,
+    users,
+    getTasksByProject,
+    getProjectActivity,
+    updateProjectStatus,
+  } = useData()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
 
   if (!user) return null
 
-  const isPM = canManageTeam(user.role)
-  const filteredProjects = isPM
-    ? projects
-    : projects.filter((p) => p.teamIds.includes(user.id))
+  const canManageProjects = canManageTeam(user.role)
+  const visibleProjects = projectBoardProjects
 
   const getProjectsByStatus = (status: ProjectStatus) => {
-    return filteredProjects.filter((p) => p.status === status)
+    return visibleProjects.filter((project) => {
+      const tasks = getTasksByProject(project.id)
+      return deriveProjectDisplayStatus(project.status, tasks) === status
+    })
   }
 
   const getProjectProgress = (projectId: string) => {
-    const tasks = getTasksByProject(projectId)
-    if (tasks.length === 0) return 0
-    const completed = tasks.filter((t) => t.status === 'done').length
-    return Math.round((completed / tasks.length) * 100)
+    return calculateProjectProgress(getTasksByProject(projectId))
   }
 
-  const handleStatusChange = (projectId: string, newStatus: ProjectStatus) => {
-    updateProjectStatus(projectId, newStatus)
+  const handleStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
+    try {
+      await updateProjectStatus(projectId, newStatus)
+      toast.success(`Proyecto actualizado a "${statusConfig[newStatus].label}"`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el proyecto')
+    }
   }
 
   const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? null,
-    [projects, selectedProjectId]
+    () => visibleProjects.find((project) => project.id === selectedProjectId) ?? null,
+    [visibleProjects, selectedProjectId]
   )
 
   // Stats
-  const totalProjects = filteredProjects.length
-  const activeProjects = filteredProjects.filter((p) => p.status === 'in_progress').length
-  const inReview = filteredProjects.filter((p) => p.status === 'review').length
-  const totalBudget = filteredProjects.reduce((sum, p) => sum + p.budget, 0)
+  const totalProjects = visibleProjects.length
+  const activeProjects = visibleProjects.filter((project) => {
+    const tasks = getTasksByProject(project.id)
+    return deriveProjectDisplayStatus(project.status, tasks) === 'in_progress'
+  }).length
+  const inReview = visibleProjects.filter((project) => {
+    const tasks = getTasksByProject(project.id)
+    return deriveProjectDisplayStatus(project.status, tasks) === 'review'
+  }).length
+  const totalBudget = visibleProjects.reduce((sum, p) => sum + p.budget, 0)
 
   return (
     <div className="p-6 space-y-6 h-full flex flex-col">
@@ -94,7 +125,7 @@ export default function ProjectsPage() {
         <div>
           <h1 className="text-2xl font-bold text-balance">Proyectos</h1>
           <p className="text-muted-foreground max-w-2xl">
-            {isPM ? 'Gestiona todos los proyectos del equipo' : 'Tus proyectos asignados'}
+            {canManageProjects ? 'Gestiona todos los proyectos del equipo' : 'Proyectos donde colaboras'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -104,10 +135,10 @@ export default function ProjectsPage() {
               <TabsTrigger value="list">Lista</TabsTrigger>
             </TabsList>
           </Tabs>
-          {isPM && (
-            <Button>
+          {canManageProjects && (
+            <Button variant="outline" disabled>
               <Plus className="size-4 mr-2" />
-              Nuevo Proyecto
+              Nuevo Proyecto desde Hand-off
             </Button>
           )}
         </div>
@@ -181,6 +212,7 @@ export default function ProjectsPage() {
                             users={users}
                             progress={getProjectProgress(project.id)}
                             taskCount={getTasksByProject(project.id).length}
+                            pmName={getProjectPmName(project, users)}
                             onClick={() => setSelectedProjectId(project.id)}
                           />
                         ))}
@@ -211,7 +243,7 @@ export default function ProjectsPage() {
       {/* List View */}
       {viewMode === 'list' && (
         <div className="space-y-3">
-          {filteredProjects.length === 0 ? (
+          {visibleProjects.length === 0 ? (
             <Card className="p-12">
               <Empty className="border-0 p-0">
                 <EmptyHeader>
@@ -220,15 +252,15 @@ export default function ProjectsPage() {
                   </EmptyMedia>
                   <EmptyTitle>No hay proyectos para mostrar</EmptyTitle>
                   <EmptyDescription>
-                    {isPM
+                    {canManageProjects
                       ? 'Los proyectos creados apareceran aqui.'
-                      : 'Cuando te asignen proyectos, los veras en esta lista.'}
+                      : 'Apareceran aqui cuando formes parte del equipo o tengas tareas asignadas.'}
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
             </Card>
           ) : (
-            filteredProjects.map((project) => (
+            visibleProjects.map((project) => (
               <Card
                 key={project.id}
                 className="p-4 cursor-pointer hover:shadow-md transition-shadow"
@@ -238,8 +270,11 @@ export default function ProjectsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold truncate">{project.name}</h3>
-                      <Badge variant="outline" className={statusConfig[project.status].color}>
-                        {statusConfig[project.status].label}
+                      <Badge
+                        variant="outline"
+                        className={statusConfig[deriveProjectDisplayStatus(project.status, getTasksByProject(project.id))].color}
+                      >
+                        {statusConfig[deriveProjectDisplayStatus(project.status, getTasksByProject(project.id))].label}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground truncate">{project.clientName}</p>
@@ -279,8 +314,9 @@ export default function ProjectsPage() {
               project={selectedProject}
               tasks={getTasksByProject(selectedProject.id)}
               users={users}
+              getProjectActivity={getProjectActivity}
               onStatusChange={handleStatusChange}
-              isPM={isPM}
+              canManageProjects={canManageProjects}
             />
           )}
         </DialogContent>
@@ -294,10 +330,11 @@ interface ProjectCardProps {
   users: { id: string; name: string }[]
   progress: number
   taskCount: number
+  pmName?: string
   onClick: () => void
 }
 
-function ProjectCard({ project, users, progress, taskCount, onClick }: ProjectCardProps) {
+function ProjectCard({ project, users, progress, taskCount, pmName, onClick }: ProjectCardProps) {
   const teamMembers = project.teamIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
 
   return (
@@ -333,7 +370,7 @@ function ProjectCard({ project, users, progress, taskCount, onClick }: ProjectCa
             <Progress value={progress} className="h-1.5" />
           </div>
 
-          {teamMembers.length > 0 && (
+          {(teamMembers.length > 0 || pmName) && (
             <div className="flex items-center justify-between">
               <div className="flex -space-x-2">
                 {teamMembers.slice(0, 3).map((member) => (
@@ -349,8 +386,8 @@ function ProjectCard({ project, users, progress, taskCount, onClick }: ProjectCa
                   </div>
                 )}
               </div>
-              {project.pmName && (
-                <span className="text-xs text-muted-foreground">PM: {project.pmName.split(' ')[0]}</span>
+              {pmName && (
+                <span className="text-xs text-muted-foreground">PM: {pmName.split(' ')[0]}</span>
               )}
             </div>
           )}
@@ -364,14 +401,25 @@ interface ProjectDetailProps {
   project: Project
   tasks: Task[]
   users: { id: string; name: string }[]
-  onStatusChange: (projectId: string, newStatus: ProjectStatus) => void
-  isPM: boolean
+  getProjectActivity: (projectId: string) => Promise<ProjectTaskActivity[]>
+  onStatusChange: (projectId: string, newStatus: ProjectStatus) => Promise<void>
+  canManageProjects: boolean
 }
 
-function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectDetailProps) {
+function ProjectDetail({
+  project,
+  tasks,
+  users,
+  getProjectActivity,
+  onStatusChange,
+  canManageProjects,
+}: ProjectDetailProps) {
+  const [isEditOpen, setIsEditOpen] = useState(false)
   const completedTasks = tasks.filter((t) => t.status === 'done').length
-  const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0
+  const progress = calculateProjectProgress(tasks)
+  const displayStatus = deriveProjectDisplayStatus(project.status, tasks)
   const teamMembers = project.teamIds.map((id) => users.find((u) => u.id === id)).filter(Boolean)
+  const pmName = getProjectPmName(project, users)
 
   const tasksByStatus = {
     todo: tasks.filter((t) => t.status === 'todo'),
@@ -388,8 +436,8 @@ function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectD
           <h2 className="text-xl font-bold">{project.name}</h2>
           <p className="text-muted-foreground">{project.clientName}</p>
         </div>
-        <Badge variant="outline" className={statusConfig[project.status].color}>
-          {statusConfig[project.status].label}
+        <Badge variant="outline" className={statusConfig[displayStatus].color}>
+          {statusConfig[displayStatus].label}
         </Badge>
       </div>
 
@@ -408,12 +456,25 @@ function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectD
           <p className="text-lg font-bold">{completedTasks}/{tasks.length}</p>
         </div>
         <div className="p-3 bg-muted/50 rounded-lg">
+          <p className="text-xs text-muted-foreground">Fecha inicio</p>
+          <p className="text-lg font-bold">
+            {project.startDate?.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }) || '-'}
+          </p>
+        </div>
+        <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-xs text-muted-foreground">Fecha fin</p>
           <p className="text-lg font-bold">
             {project.endDate?.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }) || '-'}
           </p>
         </div>
       </div>
+
+      {project.description && (
+        <div className="rounded-lg bg-muted/40 p-4">
+          <p className="text-xs text-muted-foreground mb-1">Descripcion</p>
+          <p className="text-sm">{project.description}</p>
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div>
@@ -431,14 +492,14 @@ function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectD
           Equipo
         </h3>
         <div className="flex flex-wrap gap-2">
-          {project.pmName && (
+          {pmName && (
             <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full">
               <Avatar className="size-6">
                 <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                  {project.pmName.split(' ').map((n) => n[0]).join('')}
+                  {pmName.split(' ').map((n) => n[0]).join('')}
                 </AvatarFallback>
               </Avatar>
-              <span className="text-sm">{project.pmName}</span>
+              <span className="text-sm">{pmName}</span>
               <Badge variant="secondary" className="text-xs">PM</Badge>
             </div>
           )}
@@ -452,6 +513,11 @@ function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectD
               <span className="text-sm">{member?.name}</span>
             </div>
           ))}
+          {!pmName && teamMembers.length === 0 && (
+            <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              Sin PM ni equipo asignado.
+            </div>
+          )}
         </div>
       </div>
 
@@ -473,27 +539,37 @@ function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectD
         </div>
       </div>
 
+      {canManageProjects && (
+        <ProjectActivityTimeline
+          projectId={project.id}
+          getProjectActivity={getProjectActivity}
+        />
+      )}
+
       {/* Actions */}
-      {isPM && (
+      {canManageProjects && (
         <div className="flex gap-2 pt-4 border-t">
+          <Button variant="outline" onClick={() => setIsEditOpen(true)}>
+            Editar Proyecto
+          </Button>
           {project.status !== 'completed' && (
             <>
-              {project.status === 'backlog' && (
+              {displayStatus === 'backlog' && (
                 <Button onClick={() => onStatusChange(project.id, 'in_progress')}>
                   Iniciar Proyecto
                 </Button>
               )}
-              {project.status === 'in_progress' && (
+              {displayStatus === 'in_progress' && (
                 <Button onClick={() => onStatusChange(project.id, 'review')}>
                   Enviar a Revision
                 </Button>
               )}
-              {project.status === 'review' && (
+              {displayStatus === 'review' && (
                 <Button onClick={() => onStatusChange(project.id, 'delivered')}>
                   Marcar Entregado
                 </Button>
               )}
-              {project.status === 'delivered' && (
+              {displayStatus === 'delivered' && (
                 <Button onClick={() => onStatusChange(project.id, 'completed')}>
                   Completar Proyecto
                 </Button>
@@ -501,6 +577,133 @@ function ProjectDetail({ project, tasks, users, onStatusChange, isPM }: ProjectD
             </>
           )}
           <Button variant="outline">Ver Tareas Detalle</Button>
+        </div>
+      )}
+
+      <ProjectFormDialog
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        editProject={project}
+      />
+    </div>
+  )
+}
+
+interface ProjectActivityTimelineProps {
+  projectId: string
+  getProjectActivity: (projectId: string) => Promise<ProjectTaskActivity[]>
+}
+
+function ProjectActivityTimeline({
+  projectId,
+  getProjectActivity,
+}: ProjectActivityTimelineProps) {
+  const [activities, setActivities] = useState<ProjectTaskActivity[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [reloadCount, setReloadCount] = useState(0)
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadProjectActivity = async () => {
+      setIsLoading(true)
+      setErrorMessage(null)
+
+      try {
+        const nextActivities = await getProjectActivity(projectId)
+
+        if (!isActive) {
+          return
+        }
+
+        setActivities(nextActivities)
+      } catch (error) {
+        if (!isActive) {
+          return
+        }
+
+        setActivities([])
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'No se pudo cargar el historial del proyecto.'
+        )
+      } finally {
+        if (isActive) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadProjectActivity()
+
+    return () => {
+      isActive = false
+    }
+  }, [getProjectActivity, projectId, reloadCount])
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <MessageSquareText className="size-4 text-muted-foreground" />
+        <h3 className="text-sm font-medium">Historial de actividad</h3>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="rounded-lg border bg-muted/10 p-4 space-y-3">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          ))}
+        </div>
+      ) : errorMessage ? (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex flex-col gap-3 p-4">
+            <div>
+              <p className="text-sm font-medium text-destructive">No se pudo cargar el historial.</p>
+              <p className="text-sm text-muted-foreground">{errorMessage}</p>
+            </div>
+            <div>
+              <Button variant="outline" size="sm" onClick={() => setReloadCount((count) => count + 1)}>
+                Reintentar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : activities.length === 0 ? (
+        <Card className="p-6">
+          <Empty className="border-0 p-0">
+            <EmptyHeader className="gap-2">
+              <EmptyMedia variant="icon">
+                <MessageSquareText className="size-5" />
+              </EmptyMedia>
+              <EmptyTitle>Aun no hay actividad</EmptyTitle>
+              <EmptyDescription>
+                Las notas de avance de las tareas de este proyecto apareceran aqui.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {activities.map((activity) => (
+            <div key={activity.id} className="rounded-lg border bg-muted/20 p-4 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium">{activity.taskTitle}</p>
+                  <p className="text-xs text-muted-foreground">{activity.actorName}</p>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {activity.createdAt.toLocaleString('es-MX')}
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">{activity.noteBody ?? ''}</p>
+            </div>
+          ))}
         </div>
       )}
     </div>

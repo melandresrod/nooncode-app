@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { Lead, PointEvent, Project, Reward, Task, User, UserRole } from './types'
+import { deriveProjectDisplayStatus } from '@/lib/projects/progress'
 
 interface SalesSummary {
   openLeads: number
@@ -140,8 +141,6 @@ export interface ReportsPipelineDatum {
 export interface ReportsMonthlyDatum {
   month: string
   leads: number
-  ventas: number
-  ingresos: number
 }
 
 export interface ReportsBreakdownDatum {
@@ -154,6 +153,7 @@ export interface ReportsViewModel {
   monthlyData: ReportsMonthlyDatum[]
   sourceData: ReportsBreakdownDatum[]
   projectStatusData: ReportsBreakdownDatum[]
+  hasRecentLeadTrend: boolean
   stats: ReportsStatsSummary
 }
 
@@ -251,6 +251,42 @@ const reportsProjectStatusLabels: Record<string, string> = {
   completed: 'Completado',
 }
 
+function formatReportsMonthLabel(date: Date): string {
+  const label = new Intl.DateTimeFormat('es-MX', { month: 'short' }).format(date).replace('.', '')
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function buildMonthlyLeadTrend(leads: Lead[], monthCount = 6): ReportsMonthlyDatum[] {
+  const now = new Date()
+  const months = Array.from({ length: monthCount }, (_, index) => {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - (monthCount - index - 1), 1)
+
+    return {
+      month: formatReportsMonthLabel(monthDate),
+      leads: 0,
+    }
+  })
+
+  const monthIndexByKey = new Map(
+    months.map((month, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - (monthCount - index - 1), 1)
+      return [`${monthDate.getFullYear()}-${monthDate.getMonth()}`, month]
+    })
+  )
+
+  leads.forEach((lead) => {
+    const leadDate = new Date(lead.createdAt)
+    const monthKey = `${leadDate.getFullYear()}-${leadDate.getMonth()}`
+    const monthBucket = monthIndexByKey.get(monthKey)
+
+    if (monthBucket) {
+      monthBucket.leads += 1
+    }
+  })
+
+  return months
+}
+
 interface EarningsCommissionLike {
   amount: number
   status: 'pending' | 'approved' | 'paid'
@@ -290,10 +326,18 @@ export function selectDashboardSummary(
   const inProgressTasks = tasks.filter((task) => task.status === 'in_progress').length
   const reviewTasks = tasks.filter((task) => task.status === 'review').length
 
+  const getProjectTasks = (projectId: string) => tasks.filter((task) => task.projectId === projectId)
+
   const delivery = {
-    activeProjects: projects.filter((project) => project.status === 'in_progress').length,
-    projectsInReview: projects.filter((project) => project.status === 'review').length,
-    completedProjects: projects.filter((project) => project.status === 'completed').length,
+    activeProjects: projects.filter((project) =>
+      deriveProjectDisplayStatus(project.status, getProjectTasks(project.id)) === 'in_progress'
+    ).length,
+    projectsInReview: projects.filter((project) =>
+      deriveProjectDisplayStatus(project.status, getProjectTasks(project.id)) === 'review'
+    ).length,
+    completedProjects: projects.filter((project) =>
+      deriveProjectDisplayStatus(project.status, getProjectTasks(project.id)) === 'completed'
+    ).length,
     pendingTasks,
     inProgressTasks,
     reviewTasks,
@@ -520,8 +564,14 @@ export function selectReportsViewModel(
 
   const projectStatusCounts: Record<string, number> = {}
   projects.forEach((project) => {
-    projectStatusCounts[project.status] = (projectStatusCounts[project.status] || 0) + 1
+    const displayStatus = deriveProjectDisplayStatus(
+      project.status,
+      tasks.filter((task) => task.projectId === project.id)
+    )
+    projectStatusCounts[displayStatus] = (projectStatusCounts[displayStatus] || 0) + 1
   })
+
+  const monthlyData = buildMonthlyLeadTrend(leads)
 
   return {
     pipelineData: [
@@ -532,19 +582,7 @@ export function selectReportsViewModel(
       { name: 'Negociacion', count: pipelineStatusCounts.negotiation.count, value: pipelineStatusCounts.negotiation.value },
       { name: 'Ganados', count: pipelineStatusCounts.won.count, value: pipelineStatusCounts.won.value },
     ],
-    monthlyData: [
-      { month: 'Sep', leads: 12, ventas: 3, ingresos: 45000 },
-      { month: 'Oct', leads: 18, ventas: 5, ingresos: 72000 },
-      { month: 'Nov', leads: 15, ventas: 4, ingresos: 58000 },
-      { month: 'Dic', leads: 22, ventas: 7, ingresos: 95000 },
-      { month: 'Ene', leads: 28, ventas: 8, ingresos: 120000 },
-      {
-        month: 'Feb',
-        leads: totalLeads,
-        ventas: wonLeads,
-        ingresos: totalRevenue,
-      },
-    ],
+    monthlyData,
     sourceData: Object.entries(sourceCounts).map(([key, value]) => ({
       name: reportsSourceLabels[key] || key,
       value,
@@ -553,13 +591,19 @@ export function selectReportsViewModel(
       name: reportsProjectStatusLabels[key] || key,
       value,
     })),
+    hasRecentLeadTrend: monthlyData.some((month) => month.leads > 0),
     stats: {
       totalLeads,
       wonLeads,
       conversionRate: totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0,
       totalRevenue,
       avgDealSize: wonLeads > 0 ? Math.round(totalRevenue / wonLeads) : 0,
-      activeProjects: projects.filter((project) => project.status === 'in_progress').length,
+      activeProjects: projects.filter((project) =>
+        deriveProjectDisplayStatus(
+          project.status,
+          tasks.filter((task) => task.projectId === project.id)
+        ) === 'in_progress'
+      ).length,
       completedTasks: tasks.filter((task) => task.status === 'done').length,
       avgScore:
         totalLeads > 0

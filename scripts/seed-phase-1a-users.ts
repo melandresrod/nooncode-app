@@ -1,7 +1,10 @@
+import { loadEnvConfig } from '@next/env'
 import { createClient } from '@supabase/supabase-js'
 import { getPhase1AAdminEnv } from '../lib/env'
 import { mockUsers } from '../lib/mock-data'
 import type { Database } from '../lib/server/supabase/database.types'
+
+loadEnvConfig(process.cwd())
 
 async function seedPhase1AUsers() {
   const env = getPhase1AAdminEnv()

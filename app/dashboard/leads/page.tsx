@@ -41,6 +41,7 @@ import {
 import { LeadCard } from '@/components/lead-card'
 import { LeadDetail } from '@/components/lead-detail'
 import { LeadFormDialog } from '@/components/lead-form-dialog'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Search,
   Filter,
@@ -54,7 +55,7 @@ import { toast } from 'sonner'
 
 export default function LeadsPage() {
   const { user } = useAuth()
-  const { leads, updateLeadStatus, deleteLead } = useData()
+  const { leads, isLeadsLoading, updateLeadStatus, deleteLead } = useData()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
@@ -71,20 +72,30 @@ export default function LeadsPage() {
   })
   const { totalLeads, highScoreLeads, avgScore, pipelineValue } = selectLeadsSummary(leads)
 
-  const handleStatusChange = (leadId: string, newStatus: LeadStatus) => {
-    updateLeadStatus(leadId, newStatus)
-    if (selectedLead?.id === leadId) {
-      setSelectedLead((prev) => (prev ? { ...prev, status: newStatus } : null))
+  const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
+    try {
+      const updatedLead = await updateLeadStatus(leadId, newStatus)
+      if (selectedLead?.id === leadId) {
+        setSelectedLead(updatedLead)
+      }
+      return updatedLead
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el lead')
+      throw error
     }
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (leadToDelete) {
-      deleteLead(leadToDelete.id)
-      toast.success('Lead eliminado correctamente')
-      setLeadToDelete(null)
-      if (selectedLead?.id === leadToDelete.id) {
-        setSelectedLead(null)
+      try {
+        await deleteLead(leadToDelete.id)
+        toast.success('Lead eliminado correctamente')
+        setLeadToDelete(null)
+        if (selectedLead?.id === leadToDelete.id) {
+          setSelectedLead(null)
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el lead')
       }
     }
   }
@@ -188,7 +199,14 @@ export default function LeadsPage() {
 
       {/* Lead List */}
       <div className="space-y-3">
-        {filteredLeads.length === 0 ? (
+        {isLeadsLoading ? (
+          <Card className="p-12 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <Spinner className="size-8" />
+              <p className="text-muted-foreground">Cargando leads...</p>
+            </div>
+          </Card>
+        ) : filteredLeads.length === 0 ? (
           <Card className="p-12 text-center">
             <div className="flex flex-col items-center gap-3">
               <Users className="size-12 text-muted-foreground/50" />
@@ -225,7 +243,6 @@ export default function LeadsPage() {
             <LeadDetail
               lead={selectedLead}
               onStatusChange={handleStatusChange}
-              onClose={() => setSelectedLead(null)}
             />
           )}
         </DialogContent>

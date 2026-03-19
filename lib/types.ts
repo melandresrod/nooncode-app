@@ -41,10 +41,44 @@ export interface LeadDraft extends Omit<Lead, 'id' | 'createdAt' | 'updatedAt' |
 
 export type LeadUpdates = Partial<LeadDraft>
 
+export type LeadActivityType = 'created' | 'updated' | 'status_changed' | 'note_added'
+  | 'proposal_created'
+  | 'proposal_status_changed'
+  | 'project_created'
+
+export interface LeadActivity {
+  id: string
+  leadId: string
+  type: LeadActivityType
+  actorId?: string
+  actorName: string
+  noteBody?: string
+  metadata?: Record<string, unknown>
+  createdAt: Date
+}
+
+export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'handoff_ready'
+
+export interface LeadProposal {
+  id: string
+  leadId: string
+  title: string
+  body: string
+  amount: number
+  currency: string
+  status: ProposalStatus
+  createdAt: Date
+  updatedAt: Date
+  sentAt?: Date
+  acceptedAt?: Date
+  handoffReadyAt?: Date
+}
+
 // Project Types
 export type ProjectStatus = 'backlog' | 'in_progress' | 'review' | 'delivered' | 'completed'
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskActivityType = 'note_added'
 
 export interface Project {
   id: string
@@ -61,10 +95,18 @@ export interface Project {
   teamIds: string[]
   createdAt: Date
   updatedAt: Date
+  sourceLeadId?: string
+  sourceProposalId?: string
+  handoffReadyAt?: Date
 }
 
 export type ProjectDraft = Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
-export type ProjectUpdates = Partial<ProjectDraft>
+export type ProjectUpdates = Partial<Omit<ProjectDraft, 'description' | 'pmId' | 'startDate' | 'endDate'>> & {
+  description?: string | null
+  pmId?: string | null
+  startDate?: Date | null
+  endDate?: Date | null
+}
 
 export interface Task {
   id: string
@@ -88,6 +130,28 @@ export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'updatedAt'> & {
 }
 
 export type TaskUpdates = Partial<TaskDraft>
+
+export interface TaskActivity {
+  id: string
+  taskId: string
+  type: TaskActivityType
+  actorId?: string
+  actorName: string
+  noteBody?: string
+  metadata?: Record<string, unknown>
+  createdAt: Date
+}
+
+export interface ProjectTaskActivity {
+  id: string
+  taskId: string
+  taskTitle: string
+  type: TaskActivityType
+  actorId?: string
+  actorName: string
+  noteBody?: string
+  createdAt: Date
+}
 
 // Payment Types
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded'

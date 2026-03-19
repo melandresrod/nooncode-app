@@ -20,13 +20,13 @@ import Link from 'next/link'
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const { leads, projects, tasks } = useData()
+  const { leads, projectBoardProjects, taskBoardTasks } = useData()
 
   if (!user) return null
 
   const summary = useMemo(
-    () => selectDashboardSummary(leads, projects, tasks),
-    [leads, projects, tasks]
+    () => selectDashboardSummary(leads, projectBoardProjects, taskBoardTasks),
+    [leads, projectBoardProjects, taskBoardTasks]
   )
 
   const { sales, delivery } = summary

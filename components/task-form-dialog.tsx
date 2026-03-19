@@ -4,6 +4,7 @@ import React from "react"
 
 import { useState } from 'react'
 import { useData } from '@/lib/data-context'
+import { useAuth } from '@/lib/auth-context'
 import type { TaskDraft, TaskStatus, TaskPriority, TaskUpdates } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -56,6 +57,10 @@ const priorities: { value: TaskPriority; label: string }[] = [
   { value: 'urgent', label: 'Urgente' },
 ]
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 function createEmptyFormData(projectId = ''): TaskFormState {
   return {
     title: '',
@@ -68,10 +73,15 @@ function createEmptyFormData(projectId = ''): TaskFormState {
 }
 
 export function TaskFormDialog({ open, onOpenChange, projectId, editTask }: TaskFormDialogProps) {
+  const { authMode } = useAuth()
   const { addTask, updateTask, users, projects } = useData()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const devs = users.filter((u) => u.role === 'developer')
+  const availableProjects =
+    authMode === 'supabase'
+      ? projects.filter((project) => isUuid(project.id))
+      : projects
 
   const [formData, setFormData] = useState<TaskFormState>({
     title: editTask?.title || '',
@@ -103,10 +113,10 @@ export function TaskFormDialog({ open, onOpenChange, projectId, editTask }: Task
 
       if (editTask) {
         const taskUpdates: TaskUpdates = taskData
-        updateTask(editTask.id, taskUpdates)
+        await updateTask(editTask.id, taskUpdates)
         toast.success('Tarea actualizada correctamente')
       } else {
-        addTask(taskData)
+        await addTask(taskData)
         toast.success('Tarea creada correctamente')
       }
 
@@ -155,7 +165,7 @@ export function TaskFormDialog({ open, onOpenChange, projectId, editTask }: Task
                   <SelectValue placeholder="Seleccionar proyecto" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map((project) => (
+                  {availableProjects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.name}
                     </SelectItem>

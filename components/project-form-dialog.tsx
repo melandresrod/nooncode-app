@@ -2,9 +2,9 @@
 
 import React from "react"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useData } from '@/lib/data-context'
-import type { ProjectDraft, ProjectStatus, ProjectUpdates } from '@/lib/types'
+import type { Project, ProjectDraft, ProjectStatus, ProjectUpdates } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,14 +29,7 @@ import { toast } from 'sonner'
 interface ProjectFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  editProject?: {
-    id: string
-    name: string
-    clientName: string
-    budget: number
-    description?: string
-    status: ProjectStatus
-  }
+  editProject?: Project
 }
 
 interface ProjectFormState {
@@ -56,10 +49,31 @@ function createEmptyFormData(): ProjectFormState {
     clientName: '',
     budget: '',
     description: '',
-    pmId: '',
+    pmId: 'unassigned',
     teamIds: [],
     startDate: '',
     endDate: '',
+  }
+}
+
+function formatDateInput(date?: Date) {
+  return date ? date.toISOString().slice(0, 10) : ''
+}
+
+function createFormData(project?: Project): ProjectFormState {
+  if (!project) {
+    return createEmptyFormData()
+  }
+
+  return {
+    name: project.name,
+    clientName: project.clientName,
+    budget: project.budget.toString(),
+    description: project.description || '',
+    pmId: project.pmId || 'unassigned',
+    teamIds: project.teamIds,
+    startDate: formatDateInput(project.startDate),
+    endDate: formatDateInput(project.endDate),
   }
 }
 
@@ -70,23 +84,23 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
   const pms = users.filter((u) => u.role === 'pm' || u.role === 'admin')
   const devs = users.filter((u) => u.role === 'developer')
 
-  const [formData, setFormData] = useState<ProjectFormState>({
-    name: editProject?.name || '',
-    clientName: editProject?.clientName || '',
-    budget: editProject?.budget?.toString() || '',
-    description: editProject?.description || '',
-    pmId: '',
-    teamIds: [] as string[],
-    startDate: '',
-    endDate: '',
-  })
+  const [formData, setFormData] = useState<ProjectFormState>(() => createFormData(editProject))
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    setFormData(createFormData(editProject))
+  }, [editProject, open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
     try {
-      const pm = pms.find((p) => p.id === formData.pmId)
+      const pmId = formData.pmId === 'unassigned' ? undefined : formData.pmId
+      const pm = pms.find((p) => p.id === pmId)
 
       const projectData: ProjectDraft = {
         name: formData.name,
@@ -94,7 +108,7 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
         budget: Number.parseFloat(formData.budget) || 0,
         description: formData.description || undefined,
         status: (editProject?.status || 'backlog') as ProjectStatus,
-        pmId: formData.pmId || undefined,
+        pmId,
         pmName: pm?.name,
         teamIds: formData.teamIds,
         startDate: formData.startDate ? new Date(formData.startDate) : undefined,
@@ -102,8 +116,16 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
       }
 
       if (editProject) {
-        const projectUpdates: ProjectUpdates = projectData
-        updateProject(editProject.id, projectUpdates)
+        const projectUpdates: ProjectUpdates = {
+          description: formData.description.trim() ? formData.description.trim() : null,
+          budget: projectData.budget,
+          pmId: pmId ?? null,
+          pmName: projectData.pmName,
+          teamIds: projectData.teamIds,
+          startDate: formData.startDate ? new Date(formData.startDate) : null,
+          endDate: formData.endDate ? new Date(formData.endDate) : null,
+        }
+        await updateProject(editProject.id, projectUpdates)
         toast.success('Proyecto actualizado correctamente')
       } else {
         addProject(projectData)
@@ -150,6 +172,7 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Rediseno sitio web"
                 required
+                disabled={Boolean(editProject)}
               />
             </div>
             <div className="space-y-2">
@@ -160,6 +183,7 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
                 onChange={(e) => setFormData((prev) => ({ ...prev, clientName: e.target.value }))}
                 placeholder="Empresa SA"
                 required
+                disabled={Boolean(editProject)}
               />
             </div>
           </div>
@@ -186,6 +210,7 @@ export function ProjectFormDialog({ open, onOpenChange, editProject }: ProjectFo
                   <SelectValue placeholder="Seleccionar PM" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="unassigned">Sin PM</SelectItem>
                   {pms.map((pm) => (
                     <SelectItem key={pm.id} value={pm.id}>
                       {pm.name}

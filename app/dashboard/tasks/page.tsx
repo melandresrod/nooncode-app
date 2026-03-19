@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useAuth } from '@/lib/auth-context'
+import { useEffect, useMemo, useState } from 'react'
+import { useAuth, canManageTeam } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
-import type { Task, TaskStatus, TaskPriority } from '@/lib/types'
+import type { Task, TaskActivity, TaskStatus, TaskPriority } from '@/lib/types'
+import { TaskFormDialog } from '@/components/task-form-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,6 +45,10 @@ import {
   Flame,
 } from 'lucide-react'
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 const statusConfig: Record<TaskStatus, { label: string; color: string }> = {
   todo: { label: 'Por hacer', color: 'bg-slate-500/10 text-slate-600 border-slate-200' },
   in_progress: { label: 'En progreso', color: 'bg-blue-500/10 text-blue-600 border-blue-200' },
@@ -60,17 +65,28 @@ const priorityConfig: Record<TaskPriority, { label: string; color: string; icon:
 
 export default function TasksPage() {
   const { user } = useAuth()
-  const { tasks, projects, updateTask, updateTaskStatus } = useData()
+  const {
+    taskBoardTasks,
+    projectBoardProjects,
+    updateTask,
+    updateTaskStatus,
+    getTaskActivity,
+    addTaskNote,
+  } = useData()
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   if (!user) return null
 
+  const canCreateTasks = canManageTeam(user.role)
+  const realProjects = projectBoardProjects.filter((project) => isUuid(project.id))
+
   // Filter tasks for current user (devs see only their tasks, PMs see all)
   const userTasks = user.role === 'developer'
-    ? tasks.filter((t) => t.assignedTo === user.id)
-    : tasks
+    ? taskBoardTasks.filter((task) => task.assignedTo === user.id)
+    : taskBoardTasks
 
   const filteredTasks = userTasks.filter((task) => {
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter
@@ -79,32 +95,45 @@ export default function TasksPage() {
   })
 
   const getProjectName = (projectId: string) => {
-    return projects.find((p) => p.id === projectId)?.name || 'Proyecto'
+    return projectBoardProjects.find((project) => project.id === projectId)?.name || 'Proyecto'
   }
 
-  const handleStatusChange = (taskId: string, newStatus: TaskStatus) => {
-    updateTaskStatus(taskId, newStatus)
-    toast.success(`Tarea actualizada a "${statusConfig[newStatus].label}"`)
-  }
-
-  const handleQuickComplete = (taskId: string) => {
-    const task = tasks.find((t) => t.id === taskId)
-    if (task) {
-      const newStatus = task.status === 'done' ? 'todo' : 'done'
-      handleStatusChange(taskId, newStatus)
+  const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
+    try {
+      await updateTaskStatus(taskId, newStatus)
+      toast.success(`Tarea actualizada a "${statusConfig[newStatus].label}"`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar la tarea')
     }
   }
 
-  const handleSaveProgress = (taskId: string, hoursWorked: string) => {
-    updateTask(taskId, {
-      actualHours: hoursWorked ? Number.parseInt(hoursWorked, 10) : undefined,
-    })
-    toast.success('Progreso guardado')
+  const handleQuickComplete = async (taskId: string) => {
+    const task = taskBoardTasks.find((boardTask) => boardTask.id === taskId)
+    if (task) {
+      const newStatus = task.status === 'done' ? 'todo' : 'done'
+      await handleStatusChange(taskId, newStatus)
+    }
+  }
+
+  const handleSaveProgress = async (taskId: string, hoursWorked: string, note: string) => {
+    try {
+      await updateTask(taskId, {
+        actualHours: hoursWorked ? Number.parseInt(hoursWorked, 10) : undefined,
+      })
+
+      if (note.trim()) {
+        await addTaskNote(taskId, note)
+      }
+
+      toast.success(note.trim() ? 'Progreso y nota guardados' : 'Progreso guardado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el progreso')
+    }
   }
 
   const selectedTask = useMemo(
-    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
-    [tasks, selectedTaskId]
+    () => taskBoardTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [taskBoardTasks, selectedTaskId]
   )
 
   // Stats
@@ -124,6 +153,12 @@ export default function TasksPage() {
             Gestiona y da seguimiento a tus tareas asignadas
           </p>
         </div>
+        {canCreateTasks && realProjects.length > 0 && (
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <ListTodo className="size-4 mr-2" />
+            Nueva Tarea
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -242,10 +277,16 @@ export default function TasksPage() {
               projectName={getProjectName(selectedTask.projectId)}
               onStatusChange={handleStatusChange}
               onSaveProgress={handleSaveProgress}
+              getTaskActivity={getTaskActivity}
             />
           )}
         </DialogContent>
       </Dialog>
+
+      <TaskFormDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+      />
     </div>
   )
 }
@@ -338,17 +379,60 @@ interface TaskDetailProps {
   task: Task
   projectName: string
   onStatusChange: (taskId: string, newStatus: TaskStatus) => void
-  onSaveProgress: (taskId: string, hoursWorked: string) => void
+  onSaveProgress: (taskId: string, hoursWorked: string, note: string) => Promise<void>
+  getTaskActivity: (taskId: string) => Promise<TaskActivity[]>
 }
 
-function TaskDetail({ task, projectName, onStatusChange, onSaveProgress }: TaskDetailProps) {
+function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTaskActivity }: TaskDetailProps) {
   const [hoursWorked, setHoursWorked] = useState(task.actualHours?.toString() || '')
   const [notes, setNotes] = useState('')
+  const [activities, setActivities] = useState<TaskActivity[]>([])
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false)
+  const [isSavingProgress, setIsSavingProgress] = useState(false)
   const PriorityIcon = priorityConfig[task.priority].icon
 
-  const handleSaveProgress = () => {
-    onSaveProgress(task.id, hoursWorked)
-    setNotes('')
+  useEffect(() => {
+    let isActive = true
+
+    setIsLoadingActivity(true)
+    getTaskActivity(task.id)
+      .then((nextActivities) => {
+        if (isActive) {
+          setActivities(nextActivities)
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setActivities([])
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoadingActivity(false)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [getTaskActivity, task.id])
+
+  useEffect(() => {
+    setHoursWorked(task.actualHours?.toString() || '')
+  }, [task.actualHours, task.id])
+
+  const handleSaveProgress = async () => {
+    setIsSavingProgress(true)
+    try {
+      await onSaveProgress(task.id, hoursWorked, notes)
+      if (notes.trim()) {
+        const nextActivities = await getTaskActivity(task.id)
+        setActivities(nextActivities)
+      }
+      setNotes('')
+    } finally {
+      setIsSavingProgress(false)
+    }
   }
 
   return (
@@ -437,9 +521,32 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress }: TaskD
             rows={3}
           />
         </div>
-        <Button onClick={handleSaveProgress} className="w-full">
-          Guardar progreso
+        <Button onClick={handleSaveProgress} className="w-full" disabled={isSavingProgress}>
+          {isSavingProgress ? 'Guardando...' : 'Guardar progreso'}
         </Button>
+      </div>
+
+      <div className="space-y-3 pt-4 border-t">
+        <h4 className="font-medium">Historial</h4>
+        {isLoadingActivity ? (
+          <p className="text-sm text-muted-foreground">Cargando actividad...</p>
+        ) : activities.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aun no hay notas de avance en esta tarea.</p>
+        ) : (
+          <div className="space-y-3">
+            {activities.map((activity) => (
+              <div key={activity.id} className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">{activity.actorName}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {activity.createdAt.toLocaleString('es-MX')}
+                  </span>
+                </div>
+                <p className="text-sm text-muted-foreground">{activity.noteBody ?? ''}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

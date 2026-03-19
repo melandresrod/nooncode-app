@@ -1,246 +1,369 @@
 # project.context.full.md
 
 ## Purpose
-This file stores deeper repository truth for architecture, module boundaries, runtime reality, risks, and unresolved questions.
-It should reflect only what is confirmed or clearly labeled from repo evidence.
+This file stores deeper repository truth for architecture, runtime reality, phase status, risks, and unresolved questions.
+It should reflect only what is confirmed in the repo or clearly labeled as a recommendation.
 
 ## Project identity
 - Project: `nooncode-app`
 - Product name in the UI: `NoonApp`
 - Repo path: `C:\Users\melan\Downloads\nooncode-app`
 - Application type: Next.js App Router web application
-- Current observed stage: MVP/demo with active feature iteration, not production-hardened
+- Current observed stage: hybrid MVP with real Supabase auth/session, durable commercial flow into hand-off projects, and mock-backed remaining delivery/finance data
 
 ## Confirmed product truth
-- Confirmed product purpose:
-  - A role-based operational workspace that spans sales pipeline work, delivery/project execution, personal earnings and rewards, reporting, and an AI copilot named Maxwell.
-- Confirmed primary roles in the product:
+- The app is a role-based workspace spanning:
+  - sales and lead handling
+  - delivery/project execution
+  - personal earnings/rewards/reporting
+  - an AI copilot named Maxwell
+- Confirmed primary roles:
   - `admin`
   - `sales_manager`
   - `sales`
   - `pm`
   - `developer`
-- Confirmed user-facing module inventory from routed surfaces and sidebar navigation:
-  - Login/demo account selection
-  - Dashboard summary
-  - Leads
-  - Pipeline
-  - Projects
-  - Tasks
-  - Earnings
-  - Rewards
-  - Reports
-  - Settings
-  - Maxwell chat/copilot
-- Confirmed product narrative from UI copy:
-  - "Gestiona ventas y proyectos en un solo lugar"
-  - sales-to-delivery handoff
-  - commissions and rewards
-  - AI-assisted work for sellers, PMs, and developers
-
-## Supported hypotheses about product
-- Hypothesis: the product is aimed at an internal services team or software agency rather than a public SaaS self-serve audience.
-  - Evidence: role model, lead-to-project flow, project delivery modules, earnings/rewards, and handoff language.
-- Hypothesis: the target working language/locale is Spanish-speaking and likely Mexico-oriented.
-  - Evidence: Spanish UI copy, `es-MX` date formatting, and sample phone numbers/company naming.
-- Hypothesis: the current repo represents a demoable prototype intended to validate workflows before real backend integration.
-  - Evidence: comprehensive mock data, client-only auth, missing persistence layer, and real-looking but minimal AI route.
-
-## Architecture overview
-- Confirmed app shell:
-  - `app/layout.tsx` is the root shell.
-  - `app/page.tsx` is a client-rendered login/demo landing screen.
-  - `app/dashboard/layout.tsx` is a client-side protected shell that mounts sidebar, shared data context, and Maxwell.
-- Confirmed state and data flow:
-  - `AuthProvider` in `lib/auth-context.tsx` owns in-memory user session state.
-  - `DataProvider` in `lib/data-context.tsx` owns in-memory business datasets and CRUD mutations.
-  - Dashboard pages consume raw context data and/or selector-derived view models.
-  - `lib/dashboard-selectors.ts` is a pure derivation layer for dashboard/report/reward/settings display models.
-- Confirmed server/API shape:
-  - Only one repo-local API route was found: `app/api/maxwell/route.ts`.
-  - No CRUD API routes for leads, projects, tasks, rewards, earnings, or users were found.
-- Confirmed component boundaries:
-  - `components/app-sidebar.tsx` maps navigation by role.
-  - `components/maxwell-fab.tsx` and `components/maxwell-chat.tsx` surface the AI assistant across the dashboard.
-
-## Confirmed functional modules actually present
-- Auth/login demo surface
-  - Demo account picker with email autofill
-  - Login success redirects to `/dashboard`
-- Role-aware dashboard shell
-  - Sidebar sections vary by sales/delivery/admin helpers
-  - Unauthorized dashboard routes redirect back to `/dashboard`
-- Sales surfaces
-  - Leads and pipeline routes exist and are navigable for sales-capable roles
-- Delivery surfaces
-  - Projects and tasks routes exist and are navigable for delivery-capable roles
-- Finance/personal surfaces
-  - Earnings, rewards, and reports routes exist in finance navigation for all authenticated users
-- Admin surface
-  - Settings route exists and is shown only for admin in the sidebar
-- AI assistant
-  - Maxwell chat is mounted globally inside dashboard layout and posts to `/api/maxwell`
-
-## Confirmed auth model reality
-- Auth implementation is client-side and mock-backed.
-- `login(email, password)` in `lib/auth-context.tsx`:
-  - waits 800ms to simulate API latency
-  - matches user by email against `mockUsers`
-  - ignores the password value
-- Auth state:
-  - stored in React state only
-  - not persisted across reloads
-  - no cookies, JWTs, localStorage session restore, or server verification were found in inspected files
-- Authorization model:
-  - helper-based role checks (`canAccessSales`, `canAccessDelivery`, `canAccessAdmin`, `canManageTeam`, `canViewAllStats`)
-  - route access rules live in `lib/auth-context.tsx`
-  - dashboard shell enforces redirects in `app/dashboard/layout.tsx`
-- Confirmed access rule coverage:
-  - `/dashboard/settings` -> admin
-  - `/dashboard/leads` and `/dashboard/pipeline` -> sales access
-  - `/dashboard/projects` and `/dashboard/tasks` -> delivery access
-  - routes not listed fall back to authenticated-only access
-
-## Confirmed data model reality
-- Core business entities in `lib/types.ts`:
-  - `User`
-  - `Lead`
-  - `Project`
-  - `Task`
-  - `Payment`
-  - `Commission`
-  - `PointEvent`
-  - `Reward`
-  - `RewardRedemption`
-  - `Activity`
-- Confirmed ownership/assignment fields already in the model:
-  - leads: `assignedTo`
-  - projects: `pmId`, `pmName`, `teamIds`
-  - tasks: `assignedTo`, `assignedToName`
-- Confirmed state source:
-  - `mockUsers`
-  - `mockLeads`
-  - `mockProjects`
-  - `mockTasks`
-  - `mockRewards`
-  - point history is runtime-only state, initially empty
-- Confirmed mutation behavior:
-  - CRUD-like methods update React state only
-  - no persistence layer or server sync exists in inspected files
-
-## Confirmed mock-first vs real integration truth
-- Confirmed mock-first areas:
-  - auth/users
+- Confirmed routed module inventory:
+  - login/public shell
+  - dashboard summary
   - leads
+  - pipeline
   - projects
   - tasks
+  - earnings
   - rewards
-  - points history state
-  - most dashboard/reporting/finance numbers derived locally from mock/in-memory state
-- Confirmed partially real area:
-  - Maxwell uses a real server route shape and AI SDK streaming API surface
-- Best current classification:
-  - the app is mock-first overall, with a partially real AI integration surface
+  - reports
+  - settings
+  - Maxwell chat
 
-## Stack details
-- Confirmed framework/runtime:
-  - Next.js `16.0.10`
-  - React `19.2.0`
-  - TypeScript `^5`
-- Confirmed styling/component stack:
-  - Tailwind CSS `^4.1.9`
-  - Radix UI packages
-  - shadcn-style local UI components
-- Confirmed feature libraries:
-  - `recharts`
-  - `@dnd-kit/*`
-  - `react-hook-form`
-  - `zod`
-  - `react-markdown`
-  - `sonner`
-  - `@ai-sdk/react`
-  - `ai`
-  - `@vercel/analytics`
-- Confirmed scripts:
-  - `dev`: `next dev`
-  - `build`: `next build`
-  - `start`: `next start`
-  - `lint`: `eslint .`
+## Corrected architecture overview
+- `app/layout.tsx`
+  - decides `authMode` as `supabase` or `mock`
+  - resolves initial server-side principal through `getCurrentPrincipal()`
+  - injects `AuthProvider` with `initialUser`
+- `middleware.ts`
+  - protects `/dashboard/:path*`
+  - enforces active Supabase session
+  - reads `public.user_profiles`
+  - redirects unauthorized users to `/` or their authorized dashboard path
+- `lib/auth-context.tsx`
+  - signs in with `supabase.auth.signInWithPassword()` when real auth is enabled
+  - subscribes to `onAuthStateChange`
+  - refreshes router state after auth transitions
+  - retains `mock` fallback behavior for local/demo mode
+- `lib/server/auth/session.ts`
+  - resolves current session, user, profile, and authenticated principal server-side
+  - safely tolerates anonymous root/public rendering when no session exists
+- `lib/server/profiles/repository.ts`
+  - is the current real repository layer for `user_profiles`
+- `lib/data-context.tsx`
+  - now fetches and mutates leads through `/api/leads` when `authMode === 'supabase'`
+  - now fetches and merges persisted projects through `/api/projects` when `authMode === 'supabase'`
+  - now fetches and merges persisted tasks through `/api/tasks` when `authMode === 'supabase'`
+  - still owns the remaining business-domain state in client memory
+  - seeds from `lib/mock-data.ts`
+  - performs CRUD-like updates with `useState` for rewards/points and preserves mock fallback behavior for projects/tasks outside the persisted real-project slice
 
-## Runtime and deploy truth
-- Confirmed runtime assumptions:
-  - standard Next.js Node-based local workflow via package scripts
-  - root layout includes Vercel Analytics
-  - `next.config.mjs` sets `images.unoptimized = true`
-  - `next.config.mjs` sets `typescript.ignoreBuildErrors = true`
-- Supported deployment hypothesis:
-  - likely Vercel-oriented because Vercel Analytics is wired and the metadata generator is `v0.app`
-- Unknown runtime/deploy items:
-  - no deployment config file was inspected proving hosting target
-  - no environment variable usage was found in the inspected repo files
-  - no CI/CD definition was inspected
+## Confirmed leads persistence slice
+- `supabase/migrations/0002_phase_2a_leads.sql` adds:
+  - enums `lead_status` and `lead_source`
+  - table `public.leads`
+  - indexes and timestamp trigger
+  - RLS scoped to `admin`, `sales_manager`, and lead-owning `sales`
+- `app/api/leads/route.ts` provides:
+  - `GET /api/leads`
+  - `POST /api/leads`
+- `app/api/leads/[leadId]/route.ts` provides:
+  - `PATCH /api/leads/:leadId`
+  - `DELETE /api/leads/:leadId`
+- `lib/server/leads/*` now contains:
+  - zod validation
+  - row-to-wire mapping
+  - repository functions
+- `lib/data-context.tsx` now:
+  - loads leads from `/api/leads` in Supabase mode
+  - persists create/update/status/delete through the API
+  - keeps mock fallback behavior when auth mode is `mock`
+- `scripts/seed-phase-2a-leads.ts` can seed leads from `mockLeads` by mapping `assignedTo` through `user_profiles.legacy_mock_id`
+- `supabase/migrations/0003_phase_2b_lead_activity.sql` adds:
+  - enum `lead_activity_type`
+  - table `public.lead_activities`
+  - durable note entries and activity timeline per lead
+  - insert/update triggers on `public.leads` for create/update/status audit events
+  - RLS for sales-scoped reads and note inserts
+- `app/api/leads/[leadId]/activity/route.ts` provides:
+  - `GET /api/leads/:leadId/activity`
+  - `POST /api/leads/:leadId/activity` for persistent notes
+- `lib/data-context.tsx` now:
+  - loads lead activity on demand
+  - persists lead notes through the API in `supabase` mode
+  - refreshes cached timeline after persisted lead/status updates when loaded
+- `components/lead-detail.tsx` now:
+  - shows a follow-up timeline
+  - saves persistent notes
+  - surfaces durable create/update/status activity history
+- `supabase/migrations/0004_phase_2c_lead_proposals.sql` adds:
+  - enum `proposal_status`
+  - table `public.lead_proposals`
+  - RLS-scoped proposal persistence linked to leads
+  - proposal-created and proposal-status-changed activity entries in lead timeline
+- `app/api/leads/[leadId]/proposals/route.ts` provides:
+  - `GET /api/leads/:leadId/proposals`
+  - `POST /api/leads/:leadId/proposals`
+- `app/api/leads/[leadId]/proposals/[proposalId]/route.ts` provides:
+  - `PATCH /api/leads/:leadId/proposals/:proposalId`
+- `lib/data-context.tsx` now:
+  - loads proposals on demand
+  - persists proposal creation and status changes in `supabase` mode
+  - keeps mock fallback behavior for proposal flow
+- `components/lead-detail.tsx` now:
+  - lets sales save proposals manually or from IA-generated content
+  - tracks proposal status up to `handoff_ready`
+  - surfaces proposal activity inside lead follow-up history
+- `supabase/migrations/0005_phase_2d_projects.sql` adds:
+  - enum `project_status`
+  - table `public.projects`
+  - idempotent durable `lead -> proposal -> project` linkage
+  - insert side effects that log `project_created` on the lead timeline and promote the source lead to `won`
+  - RLS for mixed sales/delivery project visibility and controlled project updates
+- `app/api/projects/route.ts` provides:
+  - `GET /api/projects`
+- `app/api/projects/[projectId]/route.ts` provides:
+  - `PATCH /api/projects/:projectId`
+  - status plus delivery metadata updates for real UUID-backed projects
+- `app/api/leads/[leadId]/proposals/[proposalId]/project/route.ts` provides:
+  - `POST /api/leads/:leadId/proposals/:proposalId/project`
+- `lib/data-context.tsx` now:
+  - loads persisted projects in Supabase mode and merges them with `mockProjects`
+  - persists project creation from `handoff_ready` proposals
+  - persists project status changes for real UUID-backed projects
+  - persists project metadata updates for budget, PM, team, start/end dates, and description on real UUID-backed projects
+  - locally syncs the source lead to `won` after project creation so lead detail refresh stays coherent
+- `components/project-form-dialog.tsx` now:
+  - edits persisted project delivery metadata from `/dashboard/projects`
+  - keeps project name/client immutable in edit mode so the slice stays bounded to delivery management
+- `app/dashboard/projects/page.tsx` now:
+  - resolves PM display from `pmId` when `pmName` is absent on persisted rows
+  - lets PM/admin open an edit dialog for persisted project delivery metadata
+  - disables direct "Nuevo Proyecto" creation in this surface because the real flow still starts from commercial hand-off
+- Runtime validation evidence now exists for this post-2E project-management slice:
+  - authenticated local app runtime accepted `PATCH /api/projects/2f39ac50-1bce-4364-9133-1317160d8a5a`
+  - persisted fields validated: `budget`, `pmId`, `teamIds`, `startDate`, `endDate`, `description`
+  - `/api/projects` reflected the updated values after the patch
+  - original project values were restored after the check to avoid leaving test data behind
+- `components/lead-detail.tsx` now:
+  - lets sales create a project directly from a `handoff_ready` proposal
+  - shows when a proposal already has a persisted linked project
+- `supabase/migrations/0006_phase_2e_tasks.sql` adds:
+  - enums `task_status` and `task_priority`
+  - table `public.tasks`
+  - durable task records linked to persisted projects
+  - RLS that lets PM/admin manage tasks and lets assigned developers update their own task progress/status
+- `app/api/tasks/route.ts` provides:
+  - `GET /api/tasks`
+  - `POST /api/tasks`
+- `app/api/tasks/[taskId]/route.ts` provides:
+  - `PATCH /api/tasks/:taskId`
+- `lib/data-context.tsx` now:
+  - loads persisted tasks in Supabase mode and merges them with `mockTasks`
+  - persists task creation for real UUID-backed projects
+  - persists task updates and status changes for real UUID-backed tasks
+  - preserves local-only behavior for demo tasks tied to mock projects
+- `app/dashboard/tasks/page.tsx` now:
+  - lets PM/admin create tasks against persisted projects
+  - persists task status and logged-hour updates instead of staying client-only for real tasks
+- `components/task-form-dialog.tsx` now:
+  - creates and updates persisted tasks
+  - limits project selection to real persisted projects in Supabase mode
+- `supabase/migrations/0007_phase_2f_task_activity.sql` adds:
+  - enum `task_activity_type`
+  - table `public.task_activities`
+  - durable note entries linked to persisted tasks
+  - RLS that lets PM/admin read-write task activity and lets only the assigned developer access activity for their task
+- `app/api/tasks/[taskId]/activity/route.ts` provides:
+  - `GET /api/tasks/:taskId/activity`
+  - `POST /api/tasks/:taskId/activity`
+- `lib/data-context.tsx` now:
+  - loads task activity on demand
+  - persists task notes through the API in `supabase` mode
+  - preserves local-only activity notes for demo tasks
+- `app/dashboard/tasks/page.tsx` now:
+  - writes `Notas de avance` as persisted task activity instead of dropping that textarea locally
+  - shows task activity history in the task detail dialog
 
-## API and service boundaries
-- Confirmed API route inventory:
-  - `app/api/maxwell/route.ts`
-- Confirmed Maxwell route behavior:
-  - accepts chat messages
-  - streams responses with AI SDK helpers
-  - uses model identifier `openai/gpt-4o-mini`
-  - system prompt positions Maxwell as a Spanish-language copilot for sellers, PMs, and developers
-- Unknown service reality:
-  - whether a provider key/config exists at runtime
-  - whether the chosen model/provider configuration is functional in deployed environments
+## Confirmed Supabase auth/runtime truth
+- Real auth/session groundwork exists and is no longer hypothetical.
+- `.env.example` exposes:
+  - `NOON_ENABLE_SUPABASE_AUTH`
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `NOON_SEED_DEFAULT_PASSWORD`
+- `supabase/migrations/0001_phase_1a_auth_profiles.sql` defines:
+  - enum `public.user_role`
+  - table `public.user_profiles`
+  - self-select/self-limited-update RLS policies
+  - `is_active`, locale, timezone, avatar, and last-login fields
+- `scripts/seed-phase-1a-users.ts` creates/updates auth users and linked `user_profiles` rows from the legacy mock user list.
+- `QA_AUTH_RUNTIME_CHECKLIST.md` documents runtime validation steps for:
+  - login
+  - dashboard access with session
+  - session persistence on refresh
+  - logout
+  - redirect behavior without session
 
-## Important paths
-- Core app paths:
-  - `app/`
-  - `components/`
-  - `lib/`
-  - `docs/`
-  - `hooks/`
-  - `public/`
-  - `styles/`
-- High-signal files inspected in this discovery pass:
-  - `app/page.tsx`
-  - `app/layout.tsx`
-  - `app/dashboard/layout.tsx`
-  - `lib/auth-context.tsx`
-  - `lib/data-context.tsx`
-  - `lib/types.ts`
-  - `lib/mock-data.ts`
-  - `lib/dashboard-selectors.ts`
-  - `app/api/maxwell/route.ts`
-  - `docs/session-handoff.md`
-  - `components/app-sidebar.tsx`
-  - `components/maxwell-fab.tsx`
-  - `components/maxwell-chat.tsx`
-  - `package.json`
-  - `next.config.mjs`
+## Confirmed remaining mock-first domain truth
+- Projects are now mixed-mode:
+  - mock seed still exists for legacy delivery boards and demo continuity
+  - persisted projects created from commercial hand-off load in Supabase mode
+  - broad project CRUD is not fully migrated yet
+- Tasks are now mixed-mode:
+  - mock seed still exists for legacy delivery boards and demo continuity
+  - persisted tasks linked to real projects load in Supabase mode
+  - persisted task activity/comments now exist for real UUID-backed tasks
+  - a read-only project-side history rollup now exists in `/dashboard/projects` by aggregating task activity client-side for PM/admin
+  - runtime validation now exists for that rollup slice on the persisted project detail path
+  - developer project visibility alignment is now implemented through corrective migrations `0008_phase_2g_project_visibility_alignment.sql` and `0009_phase_2g_tasks_rls_recursion_fix.sql`, `GET /api/projects` role tightening, and a developer-only persisted project board view in `lib/data-context.tsx`
+  - runtime validation now exists for the underlying visibility contract: `ana@noon.app` and `pedro@noon.app` can read persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`, while `laura@noon.app` cannot read that project or its tasks
+  - browser-level runtime validation now also exists: `pedro@noon.app` sees only the persisted real project on his board and no PM/admin activity panel, while `laura@noon.app` sees an empty developer board
+  - developer task visibility alignment is now implemented in the client layer through a developer-only persisted task board view in `lib/data-context.tsx`
+  - browser-level runtime validation now also exists for `/dashboard/tasks`: `pedro@noon.app` sees only his persisted real task under `Propuesta - Finance Group MX`, while `laura@noon.app` sees an empty task board
+  - `/dashboard` delivery summary now derives from the same developer-visible project/task truth instead of mixed mock task data
+  - `/dashboard/reports` now consumes the same developer-visible project/task truth, and browser-level runtime validation confirms that developer delivery KPIs no longer report mock active projects or completed tasks
+  - `/dashboard/reports` no longer hardcodes demo monthly sales/revenue series; it now derives a real monthly lead trend from visible lead `createdAt`, keeps monthly revenue explicitly disabled until a real close-date source exists, and uses honest empty states for tabs without sufficient visible data
+  - browser-level runtime validation now also exists for reports analytics realism: `ana@noon.app` and `pedro@noon.app` see the persisted project-status chart in the `Proyectos` tab, while `laura@noon.app` sees the explicit empty state
+  - broader delivery planning and subtasks are not migrated yet
+- Runtime validation evidence now exists for the current 2E slice:
+  - live project `2f39ac50-1bce-4364-9133-1317160d8a5a` is persisted in the linked Supabase project
+  - live task `25d532a6-ce53-46db-96b1-8a519768e03b` is persisted against that project with status `review`
+  - the same progress/status logic used by `/dashboard/projects` derives that project to `review` with `85%` progress
+- Runtime validation evidence now also exists for the post-2E task-activity slice:
+  - migration `0007_phase_2f_task_activity.sql` was pushed to the linked Supabase project
+  - authenticated local app runtime accepted `PATCH /api/tasks/25d532a6-ce53-46db-96b1-8a519768e03b` to change `actualHours` from `8` to `9`, then back to `8`
+  - authenticated local app runtime accepted `POST /api/tasks/25d532a6-ce53-46db-96b1-8a519768e03b/activity` from PM `ana@noon.app`
+  - authenticated local app runtime accepted `GET /api/tasks/25d532a6-ce53-46db-96b1-8a519768e03b/activity` and returned the persisted note with actor `Ana Rodriguez`
+  - assigned developer `pedro@noon.app` could also read and create task activity on the same task
+  - unrelated developer `laura@noon.app` received `Task not found.` on read/write because task visibility was filtered out by RLS before route-level developer checks
+- Rewards are still seeded from `mockRewards`.
+- Dashboard/user balance/points still depend on mock-derived state.
+- Reward/points mutations remain client-only.
+- Reloading still loses non-lead, non-project, non-task domain changes because there is no confirmed persistence layer for those entities.
 
-## Current risks
+## Confirmed leads state vs roadmap
+- Implemented:
+  - lead list and detail surfaces
+  - direct email action via Gmail compose in both `components/lead-card.tsx` and `components/lead-detail.tsx`
+  - phone action links in lead detail
+  - selector-driven filtering/sorting/stats in leads page
+  - real CRUD/status API for leads
+  - pipeline backed by the same persisted leads source in Supabase mode
+  - optional `seed:phase2a-leads` script
+- Still missing relative to PDFs:
+  - geolocation or stored business location on leads
+  - seller proximity/radius logic
+  - WhatsApp direct action
+
+## Corrected roadmap interpretation from PDFs + repo
+- Phase 1 - Base real del sistema
+  - Status: partial
+  - Closed slice:
+    - Phase 1A auth/session foundation
+    - real login/session plumbing
+    - protected dashboard middleware/profile checks
+  - Open slice:
+    - real persistence for leads, projects, tasks, rewards, points, payments, balances
+    - durable activity/event logging beyond auth/profile login timestamps
+    - removal of mock-first domain dependency
+- Phase 2 - Flujo comercial real
+  - Status: partial
+  - Leads/pipeline and follow-up/activity have now been runtime-validated in the active local flow.
+  - Persistent commercial proposals/hand-off have runtime validation in the active local flow.
+  - Explicit lead-to-project conversion has runtime validation in the active local flow.
+  - Project/task delivery persistence now has runtime validation evidence in the active local flow.
+  - Persisted project-management metadata in `/dashboard/projects` now also has runtime validation evidence in the active local flow.
+  - Persisted task activity/comments in `/dashboard/tasks` now also have runtime validation evidence in the active local flow.
+  - Project-side history/rollup in `/dashboard/projects` now has runtime validation evidence as a read-only PM/admin timeline over task activity.
+  - Developer project visibility alignment for `/dashboard/projects` now has runtime validation evidence at both the RLS/API contract layer and the live browser board layer.
+  - Developer task visibility alignment for `/dashboard/tasks` and the delivery summary on `/dashboard` now have runtime validation evidence in the live browser.
+  - Developer delivery reporting alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
+  - Reports analytics realism alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
+  - Remaining gaps are broader delivery persistence and removal of other mixed-mode fallback dependencies.
+- Phase 3 - Leads accionables y cercania
+  - Status: partial
+  - Closed slice:
+    - Gmail compose shortcut
+    - phone visibility/action in detail
+    - clearer lead detail UI already exists
+  - Open slice:
+    - proximity/radius logic
+    - location fields and map/address handling
+    - WhatsApp shortcut
+    - explicit presencial-opportunity flow
+- Phase 4 - Maxwell funcional
+  - Status: partial scaffold only
+  - `/api/maxwell` exists, but real lead-aware or proposal-aware grounding was not proven.
+- Phases 5-13
+  - Status: not started from a real backend/data standpoint, based on current repo evidence
+
+## Recommended next route depth
+- Primary route for the immediate next phase: `system-analysis`
+- Reason:
+  - the project-side history/rollup slice is runtime-validated for the PM/admin path
+  - the developer project-visibility slice is now runtime-validated at both the RLS/API and browser board layers
+  - the developer task board and dashboard delivery summary are now aligned with real visible tasks in runtime
+  - developer delivery reporting is now aligned with the same visible truth and no longer presents hardcoded demo month series as real analytics
+  - the next step should choose the next delivery persistence or broader mixed-mode reporting gap deliberately instead of drifting into Phase 3
+- Safe chunking recommendation:
+  1. Decide whether the next delivery slice should target broader project/task visibility consistency, broader planning, or another delivery persistence gap
+  2. Bound that slice explicitly before implementation
+  3. Keep the current PM/admin rollup behavior stable while mixed-mode gaps are reduced
+
+## Suggested next implementation slice
+- Name: `Broader delivery persistence follow-up`
+- Success criterion:
+  - the next chosen delivery slice is explicitly scoped before implementation
+  - existing PM/admin project rollup behavior remains stable while that new slice lands
+  - mixed-mode fallback boundaries remain explicit instead of getting blurrier
+- Current code status:
+  - Phase 2E is implemented in repository code
+  - migration `0006_phase_2e_tasks.sql` is applied to the linked Supabase project
+  - migration `0007_phase_2f_task_activity.sql` is applied to the linked Supabase project
+  - migrations `0008_phase_2g_project_visibility_alignment.sql` and `0009_phase_2g_tasks_rls_recursion_fix.sql` are applied to the linked Supabase project
+  - runtime validation evidence exists for `/dashboard/tasks`, `/dashboard/tasks/[taskId]/activity`, and `/dashboard/projects` derivation on persisted data
+  - `/dashboard/projects` now also contains a runtime-validated read-only project activity timeline built from the existing task activity source
+  - developer `/dashboard/projects` now uses a persisted-only board source in Supabase mode and has direct live browser validation for `pedro@noon.app` and `laura@noon.app`
+  - developer `/dashboard/tasks` now uses a persisted-only task source in Supabase mode and has direct live browser validation for `pedro@noon.app` and `laura@noon.app`
+  - `/dashboard` delivery stats now derive from `projectBoardProjects` plus `taskBoardTasks`
+  - `/dashboard/reports` now derives delivery analytics from role-visible persisted data in Supabase mode, derives monthly lead trend from visible lead `createdAt`, and uses explicit empty states where real reporting basis does not yet exist
+- Explicitly excluded from that follow-up until scoped:
+  - Phase 3 proximity/radius logic
+  - payments
+  - commissions
+  - rewards
+  - customer portal
+  - Maxwell grounding
+
+## Active risks
 - High:
-  - auth is mock-only and client-side; passwords are ignored
-  - authorization is enforced in client code, not proven at a trusted backend boundary
-  - business data is in-memory only and resets on refresh
-  - TypeScript build errors are intentionally ignored
+  - mixed real/mock state can mislead future implementation if context files are not updated
+  - auth is real enough to create expectations that business data is also durable when it is not
+  - `lib/data-context.tsx` still centralizes multiple domains in a way that will complicate partial migration
 - Medium:
-  - no repo-local automated tests were found
-  - reports analytics mix derived values with hardcoded monthly history in selectors
-  - repo docs include session-handoff notes that may lag behind current code reality
-- Low/observational:
-  - package name remains `my-v0-project`, which suggests scaffold residue
-  - some UI strings show mojibake/encoding issues in source text
+  - `switchRole()` remains a mock-only utility, which can confuse settings/admin behavior in mixed mode
+  - page-level features may still rely on mock assumptions even with real auth active
+  - no automated tests were found to protect the migration from mock data to server data
+- Low:
+  - older docs/handoffs still describe auth as mock-only
+  - some source files still show encoding issues in text literals
 
-## Unresolved unknowns
-- Whether there is a separate backend or data service outside this repo
-- Whether the product has real authentication planned or already exists elsewhere
-- Whether Maxwell is expected to be a production feature or demo-only enhancement
-- Whether earnings/rewards correspond to real financial workflows or demo abstractions
-- Whether deployment target, secrets model, and operational monitoring exist outside the inspected files
+## Unresolved questions
+- Whether the product wants row-level ownership on leads by `assigned_to`, by team, or by admin-manager override model
+- Whether a separate `clients` table should be introduced in the same slice as leads or deferred to the handoff phase
+- Whether broader delivery history should stay bridged through lead activity or receive its own project-side audit model in a later slice
+- Whether Maxwell should consume commercial context in Phase 2 or remain deferred to Phase 4
 
 ## Practical guidance for future sessions
-- Treat all business-domain data and auth as demo-state unless stronger repo evidence is added.
-- Do not claim persistence, secure auth, or production readiness.
-- When changing reports or metrics, check selectors for hardcoded data before assuming charts are fully data-driven.
-- When documenting auth or security, distinguish route-level helper checks from true backend enforcement.
+- Do not describe auth as mock-only anymore.
+- Do describe the repo as mixed-mode: real auth/session plus real-capable leads/pipeline and mock-first remaining domains.
+- Treat auth/session and Gmail compose in Leads as closed slices unless regressions appear.
+- Prioritize runtime validation of leads persistence, then commercial follow-up/activity, before proximity, credits, notifications, or financial modules.

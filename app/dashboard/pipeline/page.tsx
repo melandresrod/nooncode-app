@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { LeadDetail } from '@/components/lead-detail'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import {
   Building2,
@@ -28,22 +29,37 @@ import {
   Plus,
 } from 'lucide-react'
 import { LeadFormDialog } from '@/components/lead-form-dialog'
+import { toast } from 'sonner'
 
 export default function PipelinePage() {
-  const { leads, updateLeadStatus } = useData()
+  const { leads, isLeadsLoading, updateLeadStatus } = useData()
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [showNewLeadDialog, setShowNewLeadDialog] = useState(false)
 
   const { columns, totalPipelineValue } = selectPipelineBoardSummary(leads)
 
-  const handleDragEnd = (itemId: string, _sourceColumnId: string, targetColumnId: string) => {
-    updateLeadStatus(itemId, targetColumnId as LeadStatus)
+  const handleDragEnd = async (
+    itemId: string,
+    _sourceColumnId: string,
+    targetColumnId: string
+  ) => {
+    try {
+      await updateLeadStatus(itemId, targetColumnId as LeadStatus)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo mover el lead')
+    }
   }
 
-  const handleStatusChange = (leadId: string, newStatus: LeadStatus) => {
-    updateLeadStatus(leadId, newStatus)
-    if (selectedLead?.id === leadId) {
-      setSelectedLead((prev) => (prev ? { ...prev, status: newStatus } : null))
+  const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
+    try {
+      const updatedLead = await updateLeadStatus(leadId, newStatus)
+      if (selectedLead?.id === leadId) {
+        setSelectedLead(updatedLead)
+      }
+      return updatedLead
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo actualizar el lead')
+      throw error
     }
   }
 
@@ -80,12 +96,21 @@ export default function PipelinePage() {
       </div>
 
       {/* Kanban Board */}
-      <KanbanBoard
-        columns={columns}
-        onDragEnd={handleDragEnd}
-        renderCard={renderCard}
-        getColumnStats={getColumnStats}
-      />
+      {isLeadsLoading ? (
+        <Card className="flex-1">
+          <CardContent className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3">
+            <Spinner className="size-8" />
+            <p className="text-muted-foreground">Cargando pipeline...</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <KanbanBoard
+          columns={columns}
+          onDragEnd={handleDragEnd}
+          renderCard={renderCard}
+          getColumnStats={getColumnStats}
+        />
+      )}
 
       {/* Lead Detail Dialog */}
       <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
@@ -100,7 +125,6 @@ export default function PipelinePage() {
             <LeadDetail
               lead={selectedLead}
               onStatusChange={handleStatusChange}
-              onClose={() => setSelectedLead(null)}
             />
           )}
         </DialogContent>

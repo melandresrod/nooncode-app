@@ -111,17 +111,17 @@ export function LeadFormDialog({ open, onOpenChange, editLead }: LeadFormDialogP
 
       if (editLead) {
         const leadUpdates: LeadUpdates = leadData
-        updateLead(editLead.id, leadUpdates)
+        await updateLead(editLead.id, leadUpdates)
         toast.success('Lead actualizado correctamente')
       } else {
-        addLead(leadData)
+        await addLead(leadData)
         toast.success('Lead creado correctamente')
       }
 
       onOpenChange(false)
       setFormData(createEmptyFormData())
     } catch (error) {
-      toast.error('Error al guardar el lead')
+      toast.error(error instanceof Error ? error.message : 'Error al guardar el lead')
     } finally {
       setIsSubmitting(false)
     }
