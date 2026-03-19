@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAuth, getRoleLabel } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
 import {
+  selectSettingsDirectoryRows,
   selectSettingsRoleCards,
   selectSettingsUserRows,
   settingsNotificationOptions,
@@ -39,20 +40,25 @@ import {
   Users,
   Shield,
   Bell,
-  Palette,
   Database,
   Mail,
   Building,
-  Plus,
+  CheckCircle,
   Edit,
   Trash2,
-  CheckCircle,
 } from 'lucide-react'
 
 export default function SettingsPage() {
-  const { user, switchRole } = useAuth()
-  const { users } = useData()
+  const { authMode, user, switchRole } = useAuth()
+  const {
+    isSettingsUsersLoading,
+    settingsUsers,
+    settingsUsersError,
+    refreshSettingsUsers,
+    users,
+  } = useData()
   const [activeTab, setActiveTab] = useState('general')
+  const isSupabaseMode = authMode === 'supabase'
 
   if (!user || user.role !== 'admin') {
     return (
@@ -69,6 +75,7 @@ export default function SettingsPage() {
   }
 
   const settingsUserRows = selectSettingsUserRows(users)
+  const settingsDirectoryRows = selectSettingsDirectoryRows(settingsUsers)
   const settingsRoleCards = selectSettingsRoleCards(users, user.role)
 
   return (
@@ -94,7 +101,7 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="roles">
             <Shield className="size-4 mr-2" />
-            Demo Roles
+            {isSupabaseMode ? 'Roles y Permisos' : 'Demo Roles'}
           </TabsTrigger>
           <TabsTrigger value="notifications">
             <Bell className="size-4 mr-2" />
@@ -210,62 +217,126 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-base">Gestion de Usuarios</CardTitle>
-                  <CardDescription>Administra los usuarios del sistema</CardDescription>
+                  <CardDescription>
+                    {isSupabaseMode
+                      ? 'Directorio real de perfiles sincronizado desde Supabase. La edicion aun no esta habilitada.'
+                      : 'Administra los usuarios del sistema'}
+                  </CardDescription>
                 </div>
-                <Button>
-                  <Plus className="size-4 mr-2" />
-                  Nuevo Usuario
-                </Button>
+                {!isSupabaseMode && (
+                  <Button>Nuevo Usuario</Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Usuario</TableHead>
-                    <TableHead>Rol</TableHead>
-                    <TableHead>Balance</TableHead>
-                    <TableHead>Puntos</TableHead>
-                    <TableHead>Fecha Registro</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {settingsUserRows.map((settingsUser) => (
-                    <TableRow key={settingsUser.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="size-8">
-                            <AvatarFallback className="text-xs">
-                              {settingsUser.initials}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{settingsUser.name}</p>
-                            <p className="text-xs text-muted-foreground">{settingsUser.email}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getRoleLabel(settingsUser.role)}</Badge>
-                      </TableCell>
-                      <TableCell>{settingsUser.balanceLabel}</TableCell>
-                      <TableCell>{settingsUser.pointsLabel}</TableCell>
-                      <TableCell>{settingsUser.createdAtLabel}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <Edit className="size-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="size-8 text-destructive">
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              {isSupabaseMode && settingsUsersError ? (
+                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                  <p className="font-medium text-destructive">No se pudo cargar el directorio real.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{settingsUsersError}</p>
+                  <Button className="mt-4" variant="outline" onClick={() => { void refreshSettingsUsers() }}>
+                    Reintentar
+                  </Button>
+                </div>
+              ) : isSupabaseMode && isSettingsUsersLoading ? (
+                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                  Cargando usuarios reales...
+                </div>
+              ) : isSupabaseMode && settingsDirectoryRows.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                  {isSupabaseMode
+                    ? 'No hay perfiles disponibles en el directorio real.'
+                    : 'No hay usuarios disponibles.'}
+                </div>
+              ) : isSupabaseMode ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Ultimo acceso</TableHead>
+                      <TableHead>Fecha Registro</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {settingsDirectoryRows.map((settingsUser) => (
+                      <TableRow key={settingsUser.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="size-8">
+                              <AvatarFallback className="text-xs">
+                                {settingsUser.initials}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{settingsUser.name}</p>
+                              <p className="text-xs text-muted-foreground">{settingsUser.email}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{getRoleLabel(settingsUser.role)}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={settingsUser.statusTone} variant="outline">
+                            {settingsUser.statusLabel}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{settingsUser.lastLoginLabel}</TableCell>
+                        <TableCell>{settingsUser.createdAtLabel}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Rol</TableHead>
+                      <TableHead>Balance</TableHead>
+                      <TableHead>Puntos</TableHead>
+                      <TableHead>Fecha Registro</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {settingsUserRows.map((settingsUser) => (
+                      <TableRow key={settingsUser.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="size-8">
+                              <AvatarFallback className="text-xs">
+                                {settingsUser.initials}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-medium">{settingsUser.name}</p>
+                              <p className="text-xs text-muted-foreground">{settingsUser.email}</p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{getRoleLabel(settingsUser.role)}</Badge>
+                        </TableCell>
+                        <TableCell>{settingsUser.balanceLabel}</TableCell>
+                        <TableCell>{settingsUser.pointsLabel}</TableCell>
+                        <TableCell>{settingsUser.createdAtLabel}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" className="size-8">
+                              <Edit className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="size-8 text-destructive">
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -274,46 +345,56 @@ export default function SettingsPage() {
         <TabsContent value="roles" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Cambiar Rol (Demo)</CardTitle>
+              <CardTitle className="text-base">
+                {isSupabaseMode ? 'Roles del sistema' : 'Cambiar Rol (Demo)'}
+              </CardTitle>
               <CardDescription>
-                Cambia tu rol para ver la aplicacion desde diferentes perspectivas.
-                Esta funcion es solo para propositos de demostracion.
+                {isSupabaseMode
+                  ? 'Con auth real, el rol activo viene de tu sesion y ya no puede cambiarse desde esta pantalla.'
+                  : 'Cambia tu rol para ver la aplicacion desde diferentes perspectivas. Esta funcion es solo para propositos de demostracion.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {settingsRoleCards.map((roleCard) => (
-                  <button
-                    key={roleCard.role}
-                    onClick={() => {
-                      switchRole(roleCard.role)
-                      toast.success(`Cambiado a: ${getRoleLabel(roleCard.role)}`)
-                    }}
-                    className={`p-4 rounded-lg border text-left transition-all ${
-                      roleCard.isActive
-                        ? 'border-primary bg-primary/5 ring-2 ring-primary'
-                        : 'hover:border-primary/50 hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar className="size-10">
-                        <AvatarFallback className={roleCard.isActive ? 'bg-primary text-primary-foreground' : ''}>
-                          {roleCard.initials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">{getRoleLabel(roleCard.role)}</p>
-                        <p className="text-xs text-muted-foreground">{roleCard.email}</p>
+              {isSupabaseMode ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  El cambio de rol rapido permanece disponible solo en modo demo. En modo
+                  supabase, los permisos dependen del perfil real autenticado.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {settingsRoleCards.map((roleCard) => (
+                    <button
+                      key={roleCard.role}
+                      onClick={() => {
+                        switchRole(roleCard.role)
+                        toast.success(`Cambiado a: ${getRoleLabel(roleCard.role)}`)
+                      }}
+                      className={`p-4 rounded-lg border text-left transition-all ${
+                        roleCard.isActive
+                          ? 'border-primary bg-primary/5 ring-2 ring-primary'
+                          : 'hover:border-primary/50 hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar className="size-10">
+                          <AvatarFallback className={roleCard.isActive ? 'bg-primary text-primary-foreground' : ''}>
+                            {roleCard.initials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{getRoleLabel(roleCard.role)}</p>
+                          <p className="text-xs text-muted-foreground">{roleCard.email}</p>
+                        </div>
                       </div>
-                    </div>
-                    {roleCard.isActive && (
-                      <Badge className="mt-3 bg-primary text-primary-foreground">
-                        Activo
-                      </Badge>
-                    )}
-                  </button>
-                ))}
-              </div>
+                      {roleCard.isActive && (
+                        <Badge className="mt-3 bg-primary text-primary-foreground">
+                          Activo
+                        </Badge>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

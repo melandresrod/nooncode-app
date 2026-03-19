@@ -10,7 +10,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
-import type { Lead, PointEvent, Project, Reward, Task, User, UserRole } from './types'
+import type { Lead, PointEvent, Project, Reward, SettingsUser, Task, User, UserRole } from './types'
 import { deriveProjectDisplayStatus } from '@/lib/projects/progress'
 
 interface SalesSummary {
@@ -69,6 +69,19 @@ export interface SettingsUserRow {
   initials: string
   balanceLabel: string
   pointsLabel: string
+  createdAtLabel: string
+}
+
+export interface SettingsDirectoryUserRow {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  initials: string
+  isActive: boolean
+  statusLabel: string
+  statusTone: string
+  lastLoginLabel: string
   createdAtLabel: string
 }
 
@@ -416,6 +429,17 @@ export function selectLeadScoreColor(score: number): string {
   return 'text-red-700 bg-red-500/10'
 }
 
+function formatSettingsDate(date: Date): string {
+  return date.toLocaleDateString('es-MX')
+}
+
+function formatSettingsDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
+
 export function selectSettingsUserRows(users: User[]): SettingsUserRow[] {
   return users.map((user) => ({
     id: user.id,
@@ -425,7 +449,24 @@ export function selectSettingsUserRows(users: User[]): SettingsUserRow[] {
     initials: user.name.split(' ').map((segment) => segment[0]).join(''),
     balanceLabel: `$${user.balance.toLocaleString()}`,
     pointsLabel: user.points.toLocaleString(),
-    createdAtLabel: user.createdAt.toLocaleDateString('es-MX'),
+    createdAtLabel: formatSettingsDate(user.createdAt),
+  }))
+}
+
+export function selectSettingsDirectoryRows(users: SettingsUser[]): SettingsDirectoryUserRow[] {
+  return users.map((user) => ({
+    id: user.profileId,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    initials: user.name.split(' ').map((segment) => segment[0]).join(''),
+    isActive: user.isActive,
+    statusLabel: user.isActive ? 'Activo' : 'Inactivo',
+    statusTone: user.isActive
+      ? 'bg-emerald-500/10 text-emerald-700 border-emerald-200'
+      : 'bg-muted text-muted-foreground border-border',
+    lastLoginLabel: user.lastLoginAt ? formatSettingsDateTime(user.lastLoginAt) : 'Sin registro',
+    createdAtLabel: formatSettingsDate(user.createdAt),
   }))
 }
 

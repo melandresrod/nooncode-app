@@ -24,6 +24,18 @@ export interface DeliveryUser {
   isActive: boolean
 }
 
+export interface SettingsUser {
+  profileId: string
+  legacyMockId?: string
+  email: string
+  name: string
+  role: UserRole
+  avatar?: string
+  isActive: boolean
+  createdAt: Date
+  lastLoginAt?: Date
+}
+
 // Lead Types
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
 export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other'

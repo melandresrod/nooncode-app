@@ -17,6 +17,7 @@ import type {
   ProjectTaskActivity,
   ProjectUpdates,
   Reward,
+  SettingsUser,
   Task,
   TaskActivity,
   TaskDraft,
@@ -47,6 +48,10 @@ import {
   deserializeTaskActivity,
   type TaskActivityWire,
 } from '@/lib/tasks/activity-serialization'
+import {
+  deserializeAdminDirectoryUser,
+  type AdminDirectoryUserWire,
+} from '@/lib/users/admin-directory-serialization'
 
 interface DataContextType {
   // Leads
@@ -98,6 +103,10 @@ interface DataContextType {
   redeemReward: (rewardId: string, userId: string) => boolean
 
   // Users
+  isSettingsUsersLoading: boolean
+  settingsUsers: SettingsUser[]
+  settingsUsersError: string | null
+  refreshSettingsUsers: () => Promise<void>
   deliveryUsers: DeliveryUser[]
   users: User[]
   getUserById: (id: string) => User | undefined
@@ -331,6 +340,19 @@ function mapMockUserToDeliveryUser(user: User): DeliveryUser {
   }
 }
 
+function mapMockUserToSettingsUser(user: User): SettingsUser {
+  return {
+    profileId: user.id,
+    legacyMockId: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    avatar: user.avatar,
+    isActive: true,
+    createdAt: user.createdAt,
+  }
+}
+
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
@@ -401,6 +423,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const taskActivityByTaskIdRef = useRef<Record<string, TaskActivity[]>>(taskActivityByTaskId)
   const [rewards] = useState<Reward[]>(mockRewards)
   const [users] = useState<User[]>(mockUsers)
+  const [settingsUsers, setSettingsUsers] = useState<SettingsUser[]>(
+    () => mockUsers.map(mapMockUserToSettingsUser)
+  )
+  const [isSettingsUsersLoading, setIsSettingsUsersLoading] = useState(false)
+  const [settingsUsersError, setSettingsUsersError] = useState<string | null>(null)
   const [deliveryUsers, setDeliveryUsers] = useState<DeliveryUser[]>(
     () => mockUsers
       .filter((user) => ['admin', 'pm', 'developer'].includes(user.role))
@@ -471,6 +498,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setDeliveryUsers(payload)
   }, [])
 
+  const loadSettingsUsers = useCallback(async () => {
+    const response = await fetch('/api/users/admin', {
+      method: 'GET',
+      cache: 'no-store',
+    })
+    const payload = await readApiResponse<AdminDirectoryUserWire[]>(response)
+    return payload.map(deserializeAdminDirectoryUser)
+  }, [])
+
+  const refreshSettingsUsers = useCallback(async () => {
+    setIsSettingsUsersLoading(true)
+    setSettingsUsersError(null)
+
+    try {
+      const nextSettingsUsers = await loadSettingsUsers()
+      setSettingsUsers(nextSettingsUsers)
+    } catch (error) {
+      setSettingsUsers([])
+      setSettingsUsersError(
+        error instanceof Error ? error.message : 'No se pudieron cargar los usuarios reales.'
+      )
+      throw error
+    } finally {
+      setIsSettingsUsersLoading(false)
+    }
+  }, [loadSettingsUsers])
+
   useEffect(() => {
     let isActive = true
 
@@ -480,6 +534,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setPersistedProjects([])
       setTasks(mockTasks)
       setPersistedTasks([])
+      setSettingsUsers(mockUsers.map(mapMockUserToSettingsUser))
+      setIsSettingsUsersLoading(false)
+      setSettingsUsersError(null)
       setDeliveryUsers(
         mockUsers
           .filter((currentUser) => ['admin', 'pm', 'developer'].includes(currentUser.role))
@@ -499,6 +556,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPersistedProjects([])
     setTasks(mockTasks)
     setPersistedTasks([])
+    setSettingsUsers([])
+    setIsSettingsUsersLoading(false)
+    setSettingsUsersError(null)
     setDeliveryUsers([])
     setLeadActivityByLeadId({})
     setLeadProposalsByLeadId({})
@@ -541,10 +601,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
         })
     }
 
+    if (user?.role === 'admin') {
+      setIsSettingsUsersLoading(true)
+      setSettingsUsersError(null)
+
+      loadSettingsUsers()
+        .then((nextSettingsUsers) => {
+          if (isActive) {
+            setSettingsUsers(nextSettingsUsers)
+          }
+        })
+        .catch((error) => {
+          if (isActive) {
+            setSettingsUsers([])
+            setSettingsUsersError(
+              error instanceof Error
+                ? error.message
+                : 'No se pudieron cargar los usuarios reales.'
+            )
+          }
+        })
+        .finally(() => {
+          if (isActive) {
+            setIsSettingsUsersLoading(false)
+          }
+        })
+    }
+
     return () => {
       isActive = false
     }
-  }, [authMode, loadDeliveryUsers, loadLeads, loadProjects, loadTasks, user])
+  }, [authMode, loadDeliveryUsers, loadLeads, loadProjects, loadSettingsUsers, loadTasks, user])
 
   const getLeadActivity = useCallback(async (leadId: string) => {
     if (authMode !== 'supabase') {
@@ -1670,6 +1757,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addTaskNote,
         rewards,
         redeemReward,
+        isSettingsUsersLoading,
+        settingsUsers,
+        settingsUsersError,
+        refreshSettingsUsers,
         deliveryUsers,
         users,
         getUserById,
