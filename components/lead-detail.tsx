@@ -1,8 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
-import type { Lead, LeadActivity, LeadProposal, LeadStatus, ProposalStatus } from '@/lib/types'
+import type {
+  Lead,
+  LeadActivity,
+  LeadAssignmentStatus,
+  LeadProposal,
+  LeadStatus,
+  ProposalStatus,
+} from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -37,6 +45,9 @@ import {
   Loader2,
   ArrowRightLeft,
   FolderKanban,
+  LockKeyhole,
+  Undo2,
+  UserPlus,
 } from 'lucide-react'
 
 interface LeadDetailProps {
@@ -83,6 +94,18 @@ const proposalStatusConfig: Record<ProposalStatus, { label: string; color: strin
   accepted: { label: 'Aceptada', color: 'bg-emerald-500/10 text-emerald-700' },
   rejected: { label: 'Rechazada', color: 'bg-red-500/10 text-red-700' },
   handoff_ready: { label: 'Lista para hand-off', color: 'bg-primary/10 text-primary' },
+}
+
+const assignmentStatusConfig: Record<LeadAssignmentStatus, { label: string; color: string }> = {
+  owned: { label: 'Lead tomado', color: 'bg-slate-500/10 text-slate-700 border-slate-200' },
+  proposal_locked: {
+    label: 'Bloqueado por propuesta',
+    color: 'bg-amber-500/10 text-amber-700 border-amber-200',
+  },
+  released_no_response: {
+    label: 'Liberado por falta de respuesta',
+    color: 'bg-primary/10 text-primary border-primary/20',
+  },
 }
 
 function buildDefaultProposalTitle(lead: Lead) {
@@ -154,6 +177,14 @@ function formatActivityTitle(activity: LeadActivity) {
     return `Proyecto creado: ${projectName}`
   }
 
+  if (activity.type === 'released_no_response') {
+    return 'Lead liberado por falta de respuesta'
+  }
+
+  if (activity.type === 'claimed') {
+    return 'Lead reclamado'
+  }
+
   const changedFields = getChangedFields(activity.metadata)
 
   if (changedFields.length === 0) {
@@ -192,6 +223,14 @@ function formatActivityBody(activity: LeadActivity) {
     return 'El hand-off comercial se convirtio en un proyecto persistente para delivery.'
   }
 
+  if (activity.type === 'released_no_response') {
+    return 'El lead quedo disponible para que otro vendedor lo reclame.'
+  }
+
+  if (activity.type === 'claimed') {
+    return `El lead fue reclamado y vuelve a tener responsable comercial.`
+  }
+
   const changedFields = getChangedFields(activity.metadata)
 
   if (changedFields.length === 0) {
@@ -222,12 +261,15 @@ function buildGmailComposeUrl(email: string): string {
 }
 
 export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
+  const { user } = useAuth()
   const {
     getLeadActivity,
     addLeadNote,
     getLeadProposals,
     addLeadProposal,
     updateLeadProposalStatus,
+    claimLead,
+    releaseLeadAsNoResponse,
     createProjectFromProposal,
     projects,
   } = useData()
@@ -240,6 +282,7 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [isProposalsLoading, setIsProposalsLoading] = useState(true)
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [isSavingProposal, setIsSavingProposal] = useState(false)
+  const [isMutatingAssignment, setIsMutatingAssignment] = useState(false)
   const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
   const [proposalForm, setProposalForm] = useState({
     title: buildDefaultProposalTitle(lead),
@@ -248,11 +291,23 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   })
   const hasValidEmail = isValidLeadEmail(lead.email)
   const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
+  const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
   const projectByProposalId = new Map(
     projects
       .filter((project) => project.sourceProposalId)
       .map((project) => [project.sourceProposalId as string, project])
   )
+  const lockedProposalTitle =
+    proposals.find((proposal) => proposal.id === lead.lockedByProposalId)?.title ?? null
+  const canManageAssignment =
+    user?.role === 'admin' || user?.role === 'sales_manager' || user?.role === 'sales'
+  const canReleaseLockedLead = canManageAssignment && lead.assignmentStatus === 'proposal_locked'
+  const canClaimReleasedLead =
+    canManageAssignment && lead.assignmentStatus === 'released_no_response'
+  const isReleasedLeadPendingClaim =
+    user?.role === 'sales' &&
+    lead.assignmentStatus === 'released_no_response' &&
+    lead.assignedTo !== user.id
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-500/10'
@@ -481,6 +536,34 @@ Total: 8 semanas
     }
   }
 
+  const handleReleaseLead = async () => {
+    setIsMutatingAssignment(true)
+
+    try {
+      await releaseLeadAsNoResponse(lead.id)
+      toast.success('Lead liberado como sin respuesta')
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo liberar el lead')
+    } finally {
+      setIsMutatingAssignment(false)
+    }
+  }
+
+  const handleClaimLead = async () => {
+    setIsMutatingAssignment(true)
+
+    try {
+      await claimLead(lead.id)
+      toast.success('Lead reclamado correctamente')
+      void getLeadActivity(lead.id).then(setActivities).catch(() => {})
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo reclamar el lead')
+    } finally {
+      setIsMutatingAssignment(false)
+    }
+  }
+
   const handleCreateProject = async (proposalId: string) => {
     setCreatingProjectProposalId(proposalId)
 
@@ -522,6 +605,61 @@ Total: 8 semanas
           <Badge variant="outline" className={statusConfig[lead.status].color}>
             {statusConfig[lead.status].label}
           </Badge>
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <LockKeyhole className="size-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Asignacion comercial</span>
+            </div>
+            <Badge variant="outline" className={assignmentInfo.color}>
+              {assignmentInfo.label}
+            </Badge>
+            <p className="text-sm text-muted-foreground">
+              {lead.assignmentStatus === 'proposal_locked'
+                ? lockedProposalTitle
+                  ? `La propuesta "${lockedProposalTitle}" ya fue enviada y este lead quedo bloqueado hasta respuesta o liberacion manual.`
+                  : 'Ya existe una propuesta enviada y este lead quedo bloqueado hasta respuesta o liberacion manual.'
+                : lead.assignmentStatus === 'released_no_response'
+                  ? 'Este lead fue liberado por falta de respuesta. Cualquier vendedor con acceso puede reclamarlo.'
+                  : 'Este lead mantiene responsable comercial activo.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {canReleaseLockedLead && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReleaseLead}
+                disabled={isMutatingAssignment}
+              >
+                {isMutatingAssignment ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <Undo2 className="size-4 mr-2" />
+                )}
+                Liberar como sin respuesta
+              </Button>
+            )}
+            {canClaimReleasedLead && (
+              <Button
+                type="button"
+                onClick={handleClaimLead}
+                disabled={isMutatingAssignment}
+              >
+                {isMutatingAssignment ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <UserPlus className="size-4 mr-2" />
+                )}
+                Reclamar lead
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -603,9 +741,13 @@ Total: 8 semanas
               placeholder="Escribe una nota sobre este lead..."
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
+              disabled={isReleasedLeadPendingClaim}
               rows={4}
             />
-            <Button onClick={handleSaveNote} disabled={!noteText.trim() || isSavingNote}>
+            <Button
+              onClick={handleSaveNote}
+              disabled={!noteText.trim() || isSavingNote || isReleasedLeadPendingClaim}
+            >
               {isSavingNote ? (
                 <Loader2 className="size-4 mr-2 animate-spin" />
               ) : (
@@ -644,7 +786,7 @@ Total: 8 semanas
                         </p>
                       </div>
                       <Badge variant="secondary" className="capitalize">
-                        {activity.type === 'note_added' ? 'Nota' : activity.type.replace('_', ' ')}
+                        {activity.type === 'note_added' ? 'Nota' : activity.type.replaceAll('_', ' ')}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">
@@ -672,6 +814,7 @@ Total: 8 semanas
                     onChange={(event) =>
                       setProposalForm((prev) => ({ ...prev, title: event.target.value }))
                     }
+                    disabled={isReleasedLeadPendingClaim}
                     placeholder="Propuesta - Cliente"
                   />
                 </div>
@@ -685,6 +828,7 @@ Total: 8 semanas
                     onChange={(event) =>
                       setProposalForm((prev) => ({ ...prev, amount: event.target.value }))
                     }
+                    disabled={isReleasedLeadPendingClaim}
                     placeholder="0"
                   />
                 </div>
@@ -717,6 +861,7 @@ Total: 8 semanas
                   onChange={(event) =>
                     setProposalForm((prev) => ({ ...prev, body: event.target.value }))
                   }
+                  disabled={isReleasedLeadPendingClaim}
                   placeholder="Describe alcance, inversion y siguientes pasos..."
                   rows={8}
                 />
@@ -724,7 +869,12 @@ Total: 8 semanas
 
               <Button
                 onClick={handleSaveProposal}
-                disabled={!proposalForm.title.trim() || !proposalForm.body.trim() || isSavingProposal}
+                disabled={
+                  !proposalForm.title.trim() ||
+                  !proposalForm.body.trim() ||
+                  isSavingProposal ||
+                  isReleasedLeadPendingClaim
+                }
               >
                 {isSavingProposal ? (
                   <Loader2 className="size-4 mr-2 animate-spin" />
@@ -792,6 +942,7 @@ Total: 8 semanas
                       </div>
                       <Select
                         value={proposal.status}
+                        disabled={isReleasedLeadPendingClaim}
                         onValueChange={(value) =>
                           handleProposalStatusChange(proposal.id, value as ProposalStatus)
                         }
@@ -815,6 +966,7 @@ Total: 8 semanas
                         variant={projectByProposalId.get(proposal.id) ? 'secondary' : 'default'}
                         onClick={() => handleCreateProject(proposal.id)}
                         disabled={
+                          isReleasedLeadPendingClaim ||
                           creatingProjectProposalId === proposal.id ||
                           Boolean(projectByProposalId.get(proposal.id))
                         }
@@ -835,10 +987,17 @@ Total: 8 semanas
         </TabsContent>
 
         <TabsContent value="status" className="space-y-4 pt-4">
+          {isReleasedLeadPendingClaim && (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              Este lead esta liberado. Reclama el lead antes de cambiar su estado o registrar seguimiento comercial.
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Cambiar estado</label>
             <Select
               value={lead.status}
+              disabled={isReleasedLeadPendingClaim}
               onValueChange={(value) => onStatusChange(lead.id, value as LeadStatus)}
             >
               <SelectTrigger>
@@ -859,16 +1018,16 @@ Total: 8 semanas
               variant="outline"
               className="flex-1 bg-transparent"
               onClick={handleOpenGmail}
-              disabled={!hasValidEmail}
+              disabled={!hasValidEmail || isReleasedLeadPendingClaim}
             >
               <MessageSquare className="size-4 mr-2" />
               Abrir en Gmail
             </Button>
-            <Button variant="outline" className="flex-1 bg-transparent">
+            <Button variant="outline" className="flex-1 bg-transparent" disabled={isReleasedLeadPendingClaim}>
               <Phone className="size-4 mr-2" />
               Llamar
             </Button>
-            <Button variant="outline" className="flex-1 bg-transparent">
+            <Button variant="outline" className="flex-1 bg-transparent" disabled={isReleasedLeadPendingClaim}>
               <Calendar className="size-4 mr-2" />
               Agendar
             </Button>
@@ -919,7 +1078,7 @@ Total: 8 semanas
                 <pre className="text-sm whitespace-pre-wrap font-sans">{generatedContent}</pre>
               </div>
               <div className="flex gap-2">
-                <Button className="flex-1">
+                <Button className="flex-1" disabled={isReleasedLeadPendingClaim}>
                   <Send className="size-4 mr-2" />
                   Enviar al cliente
                 </Button>
@@ -927,7 +1086,7 @@ Total: 8 semanas
                   variant="outline"
                   className="flex-1 bg-transparent"
                   onClick={handleSaveGeneratedProposal}
-                  disabled={isSavingProposal}
+                  disabled={isSavingProposal || isReleasedLeadPendingClaim}
                 >
                   {isSavingProposal ? (
                     <Loader2 className="size-4 mr-2 animate-spin" />

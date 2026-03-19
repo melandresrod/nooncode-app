@@ -16,6 +16,7 @@ export interface User {
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
 export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other'
 export type LeadSourceInput = LeadSource | 'cold_outreach' | 'social_media'
+export type LeadAssignmentStatus = 'owned' | 'proposal_locked' | 'released_no_response'
 
 export interface Lead {
   id: string
@@ -28,6 +29,10 @@ export interface Lead {
   score: number
   value: number
   assignedTo?: string
+  assignmentStatus: LeadAssignmentStatus
+  lockedByProposalId?: string
+  lockedAt?: Date
+  releasedAt?: Date
   notes?: string
   tags: string[]
   createdAt: Date
@@ -35,7 +40,10 @@ export interface Lead {
   lastContactedAt?: Date
 }
 
-export interface LeadDraft extends Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'source'> {
+export interface LeadDraft extends Omit<
+  Lead,
+  'id' | 'createdAt' | 'updatedAt' | 'source' | 'assignmentStatus' | 'lockedByProposalId' | 'lockedAt' | 'releasedAt'
+> {
   source: LeadSourceInput
 }
 
@@ -45,6 +53,8 @@ export type LeadActivityType = 'created' | 'updated' | 'status_changed' | 'note_
   | 'proposal_created'
   | 'proposal_status_changed'
   | 'project_created'
+  | 'released_no_response'
+  | 'claimed'
 
 export interface LeadActivity {
   id: string

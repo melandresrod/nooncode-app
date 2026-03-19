@@ -3,6 +3,7 @@
 import React from "react"
 
 import type { Lead, LeadStatus } from '@/lib/types'
+import { useAuth } from '@/lib/auth-context'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,6 +53,12 @@ const nextStatus: Partial<Record<LeadStatus, LeadStatus>> = {
   negotiation: 'won',
 }
 
+const assignmentStatusConfig = {
+  owned: { label: 'Tomado', color: 'bg-slate-500/10 text-slate-700 border-slate-200' },
+  proposal_locked: { label: 'Bloqueado por propuesta', color: 'bg-amber-500/10 text-amber-700 border-amber-200' },
+  released_no_response: { label: 'Liberado', color: 'bg-primary/10 text-primary border-primary/20' },
+} as const
+
 function isValidLeadEmail(email: string | undefined): boolean {
   if (!email) {
     return false
@@ -71,9 +78,15 @@ function buildGmailComposeUrl(email: string): string {
 }
 
 export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardProps) {
+  const { user } = useAuth()
   const statusInfo = statusConfig[lead.status]
+  const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
   const next = nextStatus[lead.status]
   const hasValidEmail = isValidLeadEmail(lead.email)
+  const isReleasedLeadPendingClaim =
+    user?.role === 'sales' &&
+    lead.assignmentStatus === 'released_no_response' &&
+    lead.assignedTo !== user.id
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-emerald-700 bg-emerald-500/10'
@@ -125,6 +138,9 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className={assignmentInfo.color}>
+                {assignmentInfo.label}
+              </Badge>
               <Badge variant="outline" className={statusInfo.color}>
                 {statusInfo.label}
               </Badge>
@@ -167,6 +183,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
               size="sm"
               variant="ghost"
               className="text-xs"
+              disabled={isReleasedLeadPendingClaim}
               onClick={(e) => {
                 e.stopPropagation()
                 onStatusChange(lead.id, next)
@@ -228,7 +245,7 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
                     e.stopPropagation()
                     onStatusChange(lead.id, status as LeadStatus)
                   }}
-                  disabled={status === lead.status}
+                  disabled={status === lead.status || isReleasedLeadPendingClaim}
                 >
                   {config.label}
                 </DropdownMenuItem>

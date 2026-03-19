@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
 import type { Lead, LeadStatus } from '@/lib/types'
@@ -62,6 +62,23 @@ export default function LeadsPage() {
   const [sortBy, setSortBy] = useState<LeadSortOption>('score')
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null)
+
+  useEffect(() => {
+    if (!selectedLead) {
+      return
+    }
+
+    const nextSelectedLead = leads.find((lead) => lead.id === selectedLead.id) ?? null
+
+    if (!nextSelectedLead) {
+      setSelectedLead(null)
+      return
+    }
+
+    if (nextSelectedLead !== selectedLead) {
+      setSelectedLead(nextSelectedLead)
+    }
+  }, [leads, selectedLead])
 
   if (!user) return null
 

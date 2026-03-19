@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { updateLeadSchema } from '@/lib/server/leads/schema'
 import { mapLeadRowToWire, mapUpdateLeadInputToUpdate } from '@/lib/server/leads/mappers'
-import { deleteLeadById, updateLeadById } from '@/lib/server/leads/repository'
+import { deleteLeadById, getLeadById, updateLeadById } from '@/lib/server/leads/repository'
 import { requireRole } from '@/lib/server/auth/guards'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
-import { toErrorResponse } from '@/lib/server/api/errors'
+import { ApiError, toErrorResponse } from '@/lib/server/api/errors'
 
 const routeParamsSchema = z.object({
   leadId: z.string().uuid(),
@@ -13,16 +13,48 @@ const routeParamsSchema = z.object({
 
 const allowedLeadRoles = ['admin', 'sales_manager', 'sales'] as const
 
+function assertSalesLeadOwnership(
+  principal: Awaited<ReturnType<typeof requireRole>>,
+  lead: NonNullable<Awaited<ReturnType<typeof getLeadById>>>
+) {
+  if (principal.role !== 'sales') {
+    return
+  }
+
+  const canManageLead =
+    lead.assigned_to === principal.userId ||
+    (
+      lead.created_by === principal.userId &&
+      lead.assigned_to === null &&
+      lead.assignment_status !== 'released_no_response'
+    )
+
+  if (!canManageLead) {
+    throw new ApiError(
+      'FORBIDDEN',
+      'The authenticated sales user does not own this lead.',
+      403
+    )
+  }
+}
+
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    await requireRole(allowedLeadRoles)
+    const principal = await requireRole(allowedLeadRoles)
 
     const { leadId } = routeParamsSchema.parse(await context.params)
     const payload = updateLeadSchema.parse(await request.json())
     const client = await createSupabaseServerClient()
+    const existingLead = await getLeadById(client, leadId)
+
+    if (!existingLead) {
+      throw new ApiError('NOT_FOUND', 'Lead not found.', 404)
+    }
+
+    assertSalesLeadOwnership(principal, existingLead)
     const lead = await updateLeadById(client, leadId, mapUpdateLeadInputToUpdate(payload))
 
     return NextResponse.json({
@@ -38,10 +70,17 @@ export async function DELETE(
   context: { params: Promise<{ leadId: string }> }
 ) {
   try {
-    await requireRole(allowedLeadRoles)
+    const principal = await requireRole(allowedLeadRoles)
 
     const { leadId } = routeParamsSchema.parse(await context.params)
     const client = await createSupabaseServerClient()
+    const existingLead = await getLeadById(client, leadId)
+
+    if (!existingLead) {
+      throw new ApiError('NOT_FOUND', 'Lead not found.', 404)
+    }
+
+    assertSalesLeadOwnership(principal, existingLead)
     await deleteLeadById(client, leadId)
 
     return NextResponse.json(

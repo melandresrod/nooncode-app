@@ -9,6 +9,7 @@ export type Json =
 export type UserRole = 'admin' | 'sales_manager' | 'sales' | 'pm' | 'developer'
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
 export type LeadSource = 'website' | 'referral' | 'cold_call' | 'social' | 'event' | 'other'
+export type LeadAssignmentStatus = 'owned' | 'proposal_locked' | 'released_no_response'
 export type LeadActivityType =
   | 'created'
   | 'updated'
@@ -17,6 +18,8 @@ export type LeadActivityType =
   | 'proposal_created'
   | 'proposal_status_changed'
   | 'project_created'
+  | 'released_no_response'
+  | 'claimed'
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'handoff_ready'
 export type ProjectStatus = 'backlog' | 'in_progress' | 'review' | 'delivered' | 'completed'
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done'
@@ -84,6 +87,10 @@ export interface Database {
           score: number
           value: number
           assigned_to: string | null
+          assignment_status: LeadAssignmentStatus
+          locked_by_proposal_id: string | null
+          locked_at: string | null
+          released_at: string | null
           created_by: string
           notes: string | null
           tags: string[]
@@ -103,6 +110,10 @@ export interface Database {
           score: number
           value?: number
           assigned_to?: string | null
+          assignment_status?: LeadAssignmentStatus
+          locked_by_proposal_id?: string | null
+          locked_at?: string | null
+          released_at?: string | null
           created_by: string
           notes?: string | null
           tags?: string[]
@@ -122,6 +133,10 @@ export interface Database {
           score?: number
           value?: number
           assigned_to?: string | null
+          assignment_status?: LeadAssignmentStatus
+          locked_by_proposal_id?: string | null
+          locked_at?: string | null
+          released_at?: string | null
           created_by?: string
           notes?: string | null
           tags?: string[]
@@ -436,11 +451,25 @@ export interface Database {
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      claim_released_lead: {
+        Args: {
+          target_lead_id: string
+        }
+        Returns: string
+      }
+      release_lead_as_no_response: {
+        Args: {
+          target_lead_id: string
+        }
+        Returns: string
+      }
+    }
     Enums: {
       user_role: UserRole
       lead_status: LeadStatus
       lead_source: LeadSource
+      lead_assignment_status: LeadAssignmentStatus
       lead_activity_type: LeadActivityType
       proposal_status: ProposalStatus
       project_status: ProjectStatus

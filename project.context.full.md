@@ -278,6 +278,13 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - Status: partial
   - Leads/pipeline and follow-up/activity have now been runtime-validated in the active local flow.
   - Persistent commercial proposals/hand-off have runtime validation in the active local flow.
+  - Lead assignment locking/release/claim now has runtime validation in the active local flow:
+    - proposal send locks the lead
+    - unrelated sales users cannot see the locked lead before release
+    - explicit release exposes the lead to other sales users
+    - another sales user can claim it
+    - the original sales owner now receives an explicit `403` from `PATCH /api/leads/[leadId]` after another seller claims it
+    - this behavior is enforced by `0010_phase_2h_lead_locking.sql`, `0011_phase_2h_lead_assignment_policy_fix.sql`, `/api/leads/[leadId]/release`, `/api/leads/[leadId]/claim`, and a route-level ownership guard in `/api/leads/[leadId]`
   - Explicit lead-to-project conversion has runtime validation in the active local flow.
   - Project/task delivery persistence now has runtime validation evidence in the active local flow.
   - Persisted project-management metadata in `/dashboard/projects` now also has runtime validation evidence in the active local flow.
@@ -287,7 +294,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - Developer task visibility alignment for `/dashboard/tasks` and the delivery summary on `/dashboard` now have runtime validation evidence in the live browser.
   - Developer delivery reporting alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
   - Reports analytics realism alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
-  - Remaining gaps are broader delivery persistence and removal of other mixed-mode fallback dependencies.
+  - Remaining gaps are broader delivery persistence, other commercial actionability gaps, and removal of mixed-mode fallback dependencies.
 - Phase 3 - Leads accionables y cercania
   - Status: partial
   - Closed slice:

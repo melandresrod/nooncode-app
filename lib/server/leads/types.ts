@@ -7,5 +7,6 @@ export type LeadUpdate = Database['public']['Tables']['leads']['Update']
 export interface LeadRowWithProfiles extends LeadRow {
   assigned_profile: {
     legacy_mock_id: string | null
+    full_name?: string | null
   } | null
 }

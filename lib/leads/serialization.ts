@@ -11,6 +11,10 @@ export interface LeadWire {
   score: number
   value: number
   assignedTo: string | null
+  assignmentStatus: Lead['assignmentStatus']
+  lockedByProposalId: string | null
+  lockedAt: string | null
+  releasedAt: string | null
   notes: string | null
   tags: string[]
   createdAt: string
@@ -30,6 +34,10 @@ export function deserializeLead(lead: LeadWire): Lead {
     score: lead.score,
     value: lead.value,
     assignedTo: lead.assignedTo ?? undefined,
+    assignmentStatus: lead.assignmentStatus,
+    lockedByProposalId: lead.lockedByProposalId ?? undefined,
+    lockedAt: lead.lockedAt ? new Date(lead.lockedAt) : undefined,
+    releasedAt: lead.releasedAt ? new Date(lead.releasedAt) : undefined,
     notes: lead.notes ?? undefined,
     tags: lead.tags,
     createdAt: new Date(lead.createdAt),

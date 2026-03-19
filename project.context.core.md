@@ -56,6 +56,12 @@
   - `/api/leads/[leadId]/proposals/[proposalId]`
   - durable proposal records linked to leads with `handoff_ready` state
   - `components/lead-detail.tsx` now saves and tracks commercial proposals
+- Lead assignment locking/release/claim now has a real code path:
+  - `supabase/migrations/0010_phase_2h_lead_locking.sql`
+  - `supabase/migrations/0011_phase_2h_lead_assignment_policy_fix.sql`
+  - `/api/leads/[leadId]/release`
+  - `/api/leads/[leadId]/claim`
+  - proposal send now locks the lead, release exposes it to other sellers, and claim reassigns ownership with explicit assignment state in the UI
 - Lead-to-project conversion now has a real code path:
   - `supabase/migrations/0005_phase_2d_projects.sql`
   - `/api/projects`
@@ -87,6 +93,7 @@
 - Leads/pipeline have runtime validation in the active local flow.
 - Lead follow-up/activity has runtime validation in the active local flow.
 - Lead proposals/hand-off have runtime validation in the active local flow.
+- Lead assignment locking/release/claim has runtime validation in the active local flow.
 - Projects are now mixed-mode: persisted creation/list/status plus delivery metadata updates for real hand-off projects.
 - Tasks are now mixed-mode: persisted list/create/update plus persisted activity notes for real projects, with mock fallback still present for demo projects.
 - Runtime evidence now also exists for the project-side task-activity rollup in `/dashboard/projects`: PM `ana@noon.app` could open persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a` and see aggregated task activity with task, actor, timestamp, and note ordered by recency.
@@ -97,6 +104,7 @@
 - The delivery summary on `/dashboard` is now aligned with the same developer-visible project/task truth used by `/dashboard/projects` and `/dashboard/tasks`.
 - Runtime evidence now also exists for developer reporting alignment: `/dashboard/reports` now shows `0` active projects and `0` completed tasks for both `pedro@noon.app` and `laura@noon.app`, instead of deriving mock delivery metrics.
 - Runtime evidence now also exists for reports analytics realism in `/dashboard/reports`: the sales tab no longer uses hardcoded demo month series, monthly revenue remains explicitly disabled until a real close-date source exists, `ana@noon.app` and `pedro@noon.app` now see the real persisted project-status chart, and `laura@noon.app` sees an honest empty project state.
+- Runtime evidence now also exists for lead assignment locking/release/claim: in the local app runtime on `http://127.0.0.1:3000`, seller `juan@noon.app` could send a proposal and lock a persisted lead, unrelated seller `qa.sales2@noon.app` could not see that lead until it was released, then could claim it, and the original seller received an explicit `403` when attempting to mutate the claimed lead without reclaiming it.
 - The new project rollup loading, empty, and error states were validated in the live browser runtime by delaying, emptying, and failing task-activity fetches in-page without changing server contracts.
 - Runtime evidence now exists for the developer project-visibility contract behind `/dashboard/projects`: after corrective migrations `0008_phase_2g_project_visibility_alignment.sql` and `0009_phase_2g_tasks_rls_recursion_fix.sql`, PM `ana@noon.app` and developer `pedro@noon.app` can read persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`, while unrelated developer `laura@noon.app` sees no visible projects or tasks for that project.
 - Browser-level runtime validation now also exists for the updated `/dashboard/projects` board: `ana@noon.app` sees the mixed PM board with the real project and activity panel, `pedro@noon.app` sees only the persisted real project on his board and can open its detail without the PM/admin activity panel, and `laura@noon.app` sees an empty developer board.
@@ -118,6 +126,7 @@
 - Closed in runtime: Phase 2A leads/pipeline persistence foundation.
 - Closed in runtime: Phase 2B persistent lead follow-up/activity.
 - Closed in runtime: Phase 2C commercial hand-off foundation.
+- Closed in runtime: Phase 2H commercial lead locking/release/claim workflow.
 - Closed in runtime: Phase 2D explicit lead-to-project conversion.
 - Closed in runtime: Phase 2E task persistence foundation.
 - Closed in runtime: next delivery slice for persisted project management fields in `/dashboard/projects`.
@@ -128,7 +137,7 @@
 - Closed in runtime: developer delivery reporting alignment on `/dashboard/reports`.
 - Closed in runtime: reports analytics realism alignment on `/dashboard/reports`.
 - Partial: Phase 3 "Leads accionables y cercania" because email/phone actions exist, but proximity, location, and WhatsApp are still missing.
-- Recommended next execution slice: choose the next broader mixed-mode persistence or reporting gap before Phase 3, now that `/dashboard/reports` no longer presents demo-derived analytics as real.
+- Recommended next execution slice: choose the next sales-side realism slice after lead assignment control, such as automatic follow-up, WhatsApp/location actionability, or another bounded commercial workflow gap, without reopening the already-closed delivery/reporting alignments.
 
 ## Operating rules
 - Treat auth/session as repo-proven when Supabase env is enabled.

@@ -55,6 +55,8 @@ interface DataContextType {
   updateLead: (id: string, updates: LeadUpdates) => Promise<Lead>
   deleteLead: (id: string) => Promise<void>
   updateLeadStatus: (id: string, status: LeadStatus) => Promise<Lead>
+  claimLead: (leadId: string) => Promise<Lead>
+  releaseLeadAsNoResponse: (leadId: string) => Promise<Lead>
   getLeadActivity: (leadId: string) => Promise<LeadActivity[]>
   addLeadNote: (leadId: string, body: string) => Promise<LeadActivity>
   getLeadProposals: (leadId: string) => Promise<LeadProposal[]>
@@ -347,6 +349,18 @@ function mergeTasks(baseTasks: Task[], incomingTasks: Task[]): Task[] {
   )
 }
 
+function replaceLeadInCollection(collection: Lead[], nextLead: Lead): Lead[] {
+  const existingLeadIndex = collection.findIndex((lead) => lead.id === nextLead.id)
+
+  if (existingLeadIndex === -1) {
+    return [nextLead, ...collection].sort(
+      (left, right) => right.createdAt.getTime() - left.createdAt.getTime()
+    )
+  }
+
+  return collection.map((lead) => (lead.id === nextLead.id ? nextLead : lead))
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { authMode, user } = useAuth()
   const [leads, setLeads] = useState<Lead[]>(authMode === 'supabase' ? [] : mockLeads)
@@ -397,6 +411,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
     const payload = await readApiResponse<LeadWire[]>(response)
     setLeads(payload.map(deserializeLead))
+  }, [])
+
+  const replaceLead = useCallback((nextLead: Lead) => {
+    setLeads((prev) => replaceLeadInCollection(prev, nextLead))
   }, [])
 
   const loadProjects = useCallback(async () => {
@@ -672,6 +690,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
         [leadId]: [activity, ...(prev[leadId] ?? [])],
       }))
 
+      if (status === 'sent' || status === 'accepted' || status === 'handoff_ready') {
+        setLeads((prev) =>
+          prev.map((lead) =>
+            lead.id === leadId
+              ? {
+                  ...lead,
+                  status:
+                    lead.status === 'new' || lead.status === 'contacted' || lead.status === 'qualified'
+                      ? 'proposal'
+                      : lead.status,
+                  assignmentStatus: 'proposal_locked',
+                  lockedByProposalId: proposalId,
+                  lockedAt: lead.lockedAt ?? now,
+                  releasedAt: undefined,
+                  updatedAt: now,
+                }
+              : lead
+          )
+        )
+      }
+
       return updatedProposal
     }
 
@@ -690,11 +729,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         proposal.id === proposalId ? updatedProposal : proposal
       ),
     }))
+    await loadLeads()
     if (leadActivityByLeadIdRef.current[leadId]) {
       void getLeadActivity(leadId)
     }
     return updatedProposal
-  }, [authMode, getLeadActivity, user])
+  }, [authMode, getLeadActivity, loadLeads, user])
 
   const createProjectFromProposal = useCallback(async (leadId: string, proposalId: string) => {
     if (authMode !== 'supabase') {
@@ -801,12 +841,129 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return project
   }, [authMode, getLeadActivity, leads, projects, user])
 
+  const releaseLeadAsNoResponse = useCallback(async (leadId: string) => {
+    if (authMode !== 'supabase') {
+      const currentLead = leads.find((lead) => lead.id === leadId)
+
+      if (!currentLead) {
+        throw new Error('Lead not found.')
+      }
+
+      if (currentLead.assignmentStatus !== 'proposal_locked') {
+        throw new Error('Only proposal-locked leads can be released as no response.')
+      }
+
+      const now = new Date()
+      const updatedLead: Lead = {
+        ...currentLead,
+        assignedTo: undefined,
+        assignmentStatus: 'released_no_response',
+        lockedByProposalId: undefined,
+        lockedAt: undefined,
+        releasedAt: now,
+        updatedAt: now,
+      }
+
+      replaceLead(updatedLead)
+      setLeadActivityByLeadId((prev) => ({
+        ...prev,
+        [leadId]: [
+          createMockLeadActivity(
+            leadId,
+            'released_no_response',
+            user?.name ?? 'Usuario actual',
+            now,
+            {
+              actorId: user?.id,
+              metadata: {
+                fromAssignmentStatus: currentLead.assignmentStatus,
+                toAssignmentStatus: 'released_no_response',
+              },
+            }
+          ),
+          ...(prev[leadId] ?? []),
+        ],
+      }))
+      return updatedLead
+    }
+
+    const response = await fetch(`/api/leads/${leadId}/release`, {
+      method: 'POST',
+    })
+    const payload = await readApiResponse<LeadWire>(response)
+    const updatedLead = deserializeLead(payload)
+    replaceLead(updatedLead)
+    if (leadActivityByLeadIdRef.current[leadId]) {
+      void getLeadActivity(leadId)
+    }
+    return updatedLead
+  }, [authMode, getLeadActivity, leads, replaceLead, user])
+
+  const claimLead = useCallback(async (leadId: string) => {
+    if (authMode !== 'supabase') {
+      const currentLead = leads.find((lead) => lead.id === leadId)
+
+      if (!currentLead) {
+        throw new Error('Lead not found.')
+      }
+
+      if (currentLead.assignmentStatus !== 'released_no_response') {
+        throw new Error('Only released leads can be claimed.')
+      }
+
+      const now = new Date()
+      const updatedLead: Lead = {
+        ...currentLead,
+        assignedTo: user?.id,
+        assignmentStatus: 'owned',
+        lockedByProposalId: undefined,
+        lockedAt: undefined,
+        releasedAt: undefined,
+        updatedAt: now,
+      }
+
+      replaceLead(updatedLead)
+      setLeadActivityByLeadId((prev) => ({
+        ...prev,
+        [leadId]: [
+          createMockLeadActivity(
+            leadId,
+            'claimed',
+            user?.name ?? 'Usuario actual',
+            now,
+            {
+              actorId: user?.id,
+              metadata: {
+                fromAssignmentStatus: currentLead.assignmentStatus,
+                toAssignmentStatus: 'owned',
+              },
+            }
+          ),
+          ...(prev[leadId] ?? []),
+        ],
+      }))
+      return updatedLead
+    }
+
+    const response = await fetch(`/api/leads/${leadId}/claim`, {
+      method: 'POST',
+    })
+    const payload = await readApiResponse<LeadWire>(response)
+    const updatedLead = deserializeLead(payload)
+    replaceLead(updatedLead)
+    if (leadActivityByLeadIdRef.current[leadId]) {
+      void getLeadActivity(leadId)
+    }
+    return updatedLead
+  }, [authMode, getLeadActivity, leads, replaceLead, user])
+
   // Lead operations
   const addLead = useCallback(async (leadData: LeadDraft) => {
     if (authMode !== 'supabase') {
       const newLead: Lead = {
         ...leadData,
         source: normalizeLeadSource(leadData.source),
+        assignmentStatus: 'owned',
         id: `lead-${Date.now()}`,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -1434,6 +1591,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updateLead,
         deleteLead,
         updateLeadStatus,
+        claimLead,
+        releaseLeadAsNoResponse,
         getLeadActivity,
         addLeadNote,
         getLeadProposals,

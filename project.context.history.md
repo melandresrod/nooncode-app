@@ -437,6 +437,38 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Completion status:
   - runtime validation closed for the reports analytics realism slice
 
+### Session 021
+- Date: 2026-03-18
+- Route used: system-backend -> system-testing -> system-docs
+- Objective: close the commercial lead assignment slice by making proposal send lock the lead, enabling explicit release as `sin respuesta`, enabling claim by another seller, and proving the original seller can no longer keep mutating the lead without reclaiming it
+- Implemented:
+  - `supabase/migrations/0010_phase_2h_lead_locking.sql`
+    - `assignment_status`, `locked_by_proposal_id`, `locked_at`, `released_at`
+    - proposal-status trigger that locks the lead on `sent|accepted|handoff_ready`
+    - RPCs `release_lead_as_no_response` and `claim_released_lead`
+    - widened lead/proposal/activity select visibility for released leads
+  - `supabase/migrations/0011_phase_2h_lead_assignment_policy_fix.sql`
+    - tightened `leads_update_sales_scope` and `leads_delete_sales_scope` so a plain seller can no longer keep editing or deleting a released/claimed lead only because they originally created it
+  - `/api/leads/[leadId]/release` and `/api/leads/[leadId]/claim` now expose explicit workflow actions with `404/409` semantics
+  - `/api/leads/[leadId]` now performs route-level ownership checks for plain sales users and returns explicit `403` instead of bubbling an ambiguous persistence failure
+  - `lib/data-context.tsx`, `components/lead-detail.tsx`, `components/lead-card.tsx`, and `/dashboard/leads` now surface assignment state and keep the selected lead synchronized after release/claim
+- Validation outcome:
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on pre-existing workspace issues in `supabase`, `middleware`, and seed scripts
+  - remote migrations `0010` and `0011` were applied to the linked Supabase project with `npx.cmd supabase db push --yes`
+  - runtime validation was executed against `http://127.0.0.1:3000` through real app routes plus real Supabase SSR sessions using `juan@noon.app` and a temporary sales user `qa.sales2@noon.app`
+  - proposal send locked the persisted test lead
+  - unrelated sales could not see that lead before release
+  - explicit release exposed the lead to the second seller
+  - the second seller could claim the released lead
+  - the original seller then received an explicit `403` when attempting to mutate the claimed lead without reclaiming it
+  - the validation script now cleans up its temporary QA leads automatically after each run
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for the commercial lead locking/release/claim slice
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context
