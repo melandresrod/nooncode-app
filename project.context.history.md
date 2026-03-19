@@ -587,6 +587,48 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
 - Completion status:
   - runtime validation closed for delivery user directory alignment in `/dashboard/projects` and `/dashboard/tasks`
 
+### Session 026
+- Date: 2026-03-18
+- Route used: system-analysis -> system-architecture -> system-backend -> system-frontend -> system-testing -> system-docs
+- Objective: align `/dashboard/settings` with real `user_profiles` data without opening user CRUD, earnings, rewards, or points
+- Implemented:
+  - `app/api/users/admin/route.ts`
+    - new admin-only read route for the settings user directory
+  - `lib/server/profiles/repository.ts`
+    - new `listAdminDirectoryUsers()` helper over all app roles from `user_profiles`
+  - `lib/server/profiles/types.ts`
+    - admin-directory backend contract
+  - `lib/types.ts`
+    - shared client-facing `SettingsUser` contract
+  - `lib/users/admin-directory-serialization.ts`
+    - deserializes `createdAt` and `lastLoginAt` for the settings directory
+  - `lib/data-context.tsx`
+    - now loads `settingsUsers` from `/api/users/admin` in `supabase` mode for `admin`
+    - keeps global `users` mock-backed for demo-only settings cards plus earnings/rewards continuity
+  - `lib/dashboard-selectors.ts`
+    - now exposes a dedicated settings-directory row model with real `Estado`, `Ultimo acceso`, and `Fecha Registro`
+  - `app/dashboard/settings/page.tsx`
+    - now renders the real read-only user directory in `supabase` mode
+    - hides fake `Nuevo Usuario`, edit, and delete affordances in `supabase` mode
+    - keeps the demo role switcher only in mock mode and shows an honest read-only message in `supabase`
+- Validation outcome:
+  - route/runtime validation against the live app + Supabase confirmed:
+    - `admin@noon.app` can read `GET /api/users/admin`
+    - `juan@noon.app` receives `403`
+    - the route returns the expected admin-directory fields across all app roles
+  - browser-level validation against `http://127.0.0.1:3000` through Edge + CDP confirmed:
+    - `/dashboard/settings` fetches `/api/users/admin`
+    - the `Usuarios` tab renders the real profile directory with `Estado`, `Ultimo acceso`, and `Fecha Registro`
+    - the `Usuarios` tab no longer shows `Balance`, `Puntos`, or `Nuevo Usuario` in `supabase` mode
+    - the `Roles y Permisos` tab no longer presents the demo role switcher in `supabase` mode
+  - `node_modules\\.bin\\tsc.cmd --noEmit` still fails only on the pre-existing workspace issues in `lib/server/supabase/browser.ts`, `lib/server/supabase/server.ts`, `middleware.ts`, `scripts/seed-phase-1a-users.ts`, and `scripts/seed-phase-2a-leads.ts`
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for settings user directory alignment in `/dashboard/settings`
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context

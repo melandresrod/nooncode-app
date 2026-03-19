@@ -45,6 +45,12 @@
   - `lib/server/profiles/repository.ts` lists active `admin|pm|developer` profiles from `user_profiles`
   - `lib/data-context.tsx` now loads `deliveryUsers` from that route in `supabase` mode
   - `/dashboard/projects` and `/dashboard/tasks` now resolve PM/developer selectors from the persisted delivery directory instead of `mockUsers`
+- Settings user directory now has a real read path for admin surfaces:
+  - `/api/users/admin`
+  - `lib/server/profiles/repository.ts` now lists full admin-visible directory rows from `user_profiles`
+  - `lib/data-context.tsx` now loads `settingsUsers` from that route in `supabase` mode for `admin`
+  - `/dashboard/settings` now renders real `Estado`, `Ultimo acceso`, and `Fecha Registro` columns instead of mock `Balance`/`Puntos`
+  - `/dashboard/settings` now keeps demo role switching honest in `supabase` mode by removing the fake switcher affordance
 - Leads now have a real persistence path:
   - `supabase/migrations/0002_phase_2a_leads.sql`
   - `/api/leads`
@@ -97,7 +103,8 @@
   - `lib/data-context.tsx` now aggregates task activity by project using the existing task activity route
   - PM/admin project detail now shows a read-only cross-task timeline with task, actor, timestamp, and note
   - no new migration, table, endpoint, or permission change was introduced in this slice
-- Rewards, users, and points are still mock-first in `lib/data-context.tsx`.
+- Rewards, earnings, and points are still mock-first in `lib/data-context.tsx`.
+- Global `users` remains mock-backed for demo-only surfaces, but `/dashboard/settings` now has a separate real `settingsUsers` directory in `supabase` mode.
 
 ## Confirmed product/data posture
 - Auth/session is partially real.
@@ -120,6 +127,7 @@
 - Runtime evidence now exists for the developer project-visibility contract behind `/dashboard/projects`: after corrective migrations `0008_phase_2g_project_visibility_alignment.sql` and `0009_phase_2g_tasks_rls_recursion_fix.sql`, PM `ana@noon.app` and developer `pedro@noon.app` can read persisted project `2f39ac50-1bce-4364-9133-1317160d8a5a`, while unrelated developer `laura@noon.app` sees no visible projects or tasks for that project.
 - Browser-level runtime validation now also exists for the updated `/dashboard/projects` board: `ana@noon.app` sees the mixed PM board with the real project and activity panel, `pedro@noon.app` sees only the persisted real project on his board and can open its detail without the PM/admin activity panel, and `laura@noon.app` sees an empty developer board.
 - Runtime evidence now also exists for delivery user directory alignment: in browser runtime as `ana@noon.app`, both `/dashboard/projects` and `/dashboard/tasks` fetched `/api/users/delivery`, the project edit PM selector rendered names from the real delivery directory, and the task create assignee selector rendered the real developer directory.
+- Runtime evidence now also exists for settings user directory alignment: in browser runtime as `admin@noon.app`, `/dashboard/settings` fetched `/api/users/admin`, the `Usuarios` tab rendered the real profile directory with `Estado`, `Ultimo acceso`, and `Fecha Registro`, and the `Roles y Permisos` tab no longer presented the demo role switcher in `supabase` mode.
 - Remaining non-project commercial and delivery domain data is still demo-state.
 - Maxwell has a real route shape but still lacks confirmed real business context wiring.
 - Leads support Gmail compose shortcuts from card/detail UI and now have a server-backed persistence path.
@@ -151,12 +159,14 @@
 - Closed in runtime: reports analytics realism alignment on `/dashboard/reports`.
 - Closed in runtime: Phase 2I manual lead follow-up scheduling.
 - Closed in runtime: delivery user directory alignment for `/dashboard/projects` and `/dashboard/tasks`.
+- Closed in runtime: settings user directory alignment for `/dashboard/settings`.
 - Partial: Phase 3 "Leads accionables y cercania" because email/phone actions exist, but proximity, location, and WhatsApp are still missing.
 - Recommended next execution route: `system-analysis` before choosing the next bounded real-data slice; do not drift into Phase 3 proximity by default.
 
 ## Operating rules
 - Treat auth/session as repo-proven when Supabase env is enabled.
 - Treat leads, hand-off projects, and real-project tasks/activity as real-capable when Supabase env is enabled, but keep rewards, points, and earnings flows as demo-state unless new persistence evidence is added.
-- Treat `deliveryUsers` as the real identity source only for `/dashboard/projects` and `/dashboard/tasks` in Supabase mode; do not assume `/dashboard/settings`, earnings, or rewards are already using persisted users.
+- Treat `deliveryUsers` as the real identity source only for `/dashboard/projects` and `/dashboard/tasks` in Supabase mode.
+- Treat `settingsUsers` as the real identity source only for `/dashboard/settings` in Supabase mode; do not assume earnings, rewards, or points are already using persisted users.
 - Do not mark Phase 1 complete until domain data survives reloads and role-scoped reads are backed by real data.
 - Do not start Phase 3 proximity as the primary next phase until the next delivery persistence slice is explicitly chosen.

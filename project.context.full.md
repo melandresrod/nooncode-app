@@ -60,6 +60,8 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - now fetches and mutates leads through `/api/leads` when `authMode === 'supabase'`
   - now fetches and merges persisted projects through `/api/projects` when `authMode === 'supabase'`
   - now fetches and merges persisted tasks through `/api/tasks` when `authMode === 'supabase'`
+  - now fetches `deliveryUsers` through `/api/users/delivery` for validated delivery surfaces in `supabase` mode
+  - now fetches `settingsUsers` through `/api/users/admin` for `/dashboard/settings` in `supabase` mode
   - still owns the remaining business-domain state in client memory
   - seeds from `lib/mock-data.ts`
   - performs CRUD-like updates with `useState` for rewards/points and preserves mock fallback behavior for projects/tasks outside the persisted real-project slice
@@ -227,15 +229,26 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - `GET /api/users/delivery`
   - role-guarded read access for `admin|pm|developer`
   - a delivery-only directory contract with legacy-compatible `id` plus real `profileId`
+- `app/api/users/admin/route.ts` now provides:
+  - `GET /api/users/admin`
+  - admin-only read access for the settings directory
+  - a settings/admin directory contract with `profileId`, `legacyMockId`, `role`, `isActive`, `createdAt`, and `lastLoginAt`
 - `lib/server/profiles/repository.ts` now:
   - lists active `admin|pm|developer` profiles from `user_profiles`
   - maps them into a delivery-scoped directory contract for client use
+  - lists the full admin-visible settings directory from `user_profiles` across all app roles
 - `lib/data-context.tsx` now:
   - loads `deliveryUsers` from `/api/users/delivery` in `supabase` mode for delivery-capable roles
-  - keeps global `users` mock-backed for settings/earnings/rewards so this slice stays bounded
+  - loads `settingsUsers` from `/api/users/admin` in `supabase` mode for `admin`
+  - keeps global `users` mock-backed for demo-only settings cards, earnings, and rewards so this slice stays bounded
 - `app/dashboard/projects/page.tsx`, `components/project-form-dialog.tsx`, and `components/task-form-dialog.tsx` now:
   - resolve PMs, team members, and assignee selectors from `deliveryUsers`
   - stop depending on `mockUsers` for the validated delivery surfaces
+- `app/dashboard/settings/page.tsx` now:
+  - renders a real read-only users table in `supabase` mode using `settingsUsers`
+  - replaces fake `Balance` and `Puntos` columns with real `Estado`, `Ultimo acceso`, and `Fecha Registro`
+  - hides fake create/edit/delete affordances in `supabase` mode
+  - keeps the demo role switcher only in mock mode and replaces it with an honest read-only note plus permissions matrix in `supabase`
 - `QA_AUTH_RUNTIME_CHECKLIST.md` documents runtime validation steps for:
   - login
   - dashboard access with session
@@ -278,7 +291,8 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - assigned developer `pedro@noon.app` could also read and create task activity on the same task
   - unrelated developer `laura@noon.app` received `Task not found.` on read/write because task visibility was filtered out by RLS before route-level developer checks
 - Rewards are still seeded from `mockRewards`.
-- `/dashboard/settings` user management and role-switching still remain mock-first even though delivery surfaces now consume a real delivery-only user directory.
+- `/dashboard/settings` now has a real read-only user directory in `supabase` mode, but create/edit/delete user management is still not implemented.
+- `switchRole()` remains mock-only and is now hidden as an active affordance in `/dashboard/settings` when `authMode === 'supabase'`.
 - Dashboard/user balance/points still depend on mock-derived state.
 - Reward/points mutations remain client-only.
 - Reloading still loses non-lead, non-project, non-task domain changes because there is no confirmed persistence layer for those entities.
@@ -330,6 +344,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - Reports analytics realism alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
   - Manual lead follow-up scheduling now has full runtime evidence in the active local flow, including browser-level validation for card/detail follow-up state and reload persistence.
   - Delivery user directory alignment for `/dashboard/projects` and `/dashboard/tasks` now has runtime validation evidence at both the route contract layer and the live browser selector layer.
+  - Settings user directory alignment for `/dashboard/settings` now has runtime validation evidence at both the route contract layer and the live browser UI layer.
   - Remaining gaps are broader delivery persistence, other commercial actionability gaps, and removal of mixed-mode fallback dependencies.
 - Phase 3 - Leads accionables y cercania
   - Status: partial
@@ -362,9 +377,9 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   3. Keep the current PM/admin rollup behavior stable while mixed-mode gaps are reduced
 
 ## Suggested next implementation slice
-- Name: `Post-2I next slice selection`
+- Name: `Post-settings next slice selection`
 - Success criterion:
-  - choose the next bounded real-data slice deliberately without reopening already-closed 2I work or drifting into Phase 3 by default
+  - choose the next bounded real-data slice deliberately without reopening already-closed identity-alignment work or drifting into Phase 3 by default
 - Current code status:
   - Phase 2E is implemented in repository code
   - migration `0006_phase_2e_tasks.sql` is applied to the linked Supabase project
@@ -380,6 +395,8 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - migration `0012` is already applied to the linked Supabase project
   - app-route runtime validation confirms schedule, reschedule, clear, reload, and activity-history behavior for `juan@noon.app`
   - browser-level runtime validation now also confirms scheduled/today/overdue badges in card and detail plus reload persistence, so Phase 2I should now be treated as closed in runtime
+  - `/api/users/admin` is implemented and runtime-validated for `admin` with `403` for non-admin users
+  - `/dashboard/settings` now loads `settingsUsers` from that route in `supabase` mode, renders the real read-only directory, and no longer presents fake balance/points columns or the demo role switcher as real functionality
 - Explicitly excluded from that follow-up until scoped:
   - Phase 3 proximity/radius logic
   - WhatsApp actionability
@@ -397,7 +414,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - auth is real enough to create expectations that business data is also durable when it is not
   - `lib/data-context.tsx` still centralizes multiple domains in a way that will complicate partial migration
 - Medium:
-  - `switchRole()` remains a mock-only utility, which can confuse settings/admin behavior in mixed mode
+  - `switchRole()` remains a mock-only utility; the current settings UI is now honest in `supabase`, but future reuse elsewhere could still reintroduce confusion
   - page-level features outside the validated delivery surfaces may still rely on mock assumptions even with real auth active
   - no automated tests were found to protect the migration from mock data to server data
 - Low:
@@ -412,6 +429,6 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
 
 ## Practical guidance for future sessions
 - Do not describe auth as mock-only anymore.
-- Do describe the repo as mixed-mode: real auth/session plus real-capable leads/pipeline and mock-first remaining domains.
+- Do describe the repo as mixed-mode: real auth/session plus real-capable leads/pipeline, delivery identity, and settings directory, with rewards/earnings/points still mock-first.
 - Treat auth/session and Gmail compose in Leads as closed slices unless regressions appear.
 - Prioritize runtime validation of leads persistence, then commercial follow-up/activity, before proximity, credits, notifications, or financial modules.
