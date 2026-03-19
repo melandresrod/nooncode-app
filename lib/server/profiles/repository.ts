@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
 import type {
+  DeliveryDirectoryRole,
+  DeliveryUser,
   SeedProfileInput,
   UserProfile,
   UserProfileInsert,
@@ -12,6 +14,8 @@ export type SelfServiceProfileUpdate = Pick<
   UserProfileUpdate,
   'full_name' | 'avatar_url' | 'locale' | 'timezone'
 >
+
+const deliveryDirectoryRoles: DeliveryDirectoryRole[] = ['admin', 'pm', 'developer']
 
 export async function getUserProfileById(
   client: DatabaseClient,
@@ -91,6 +95,32 @@ export async function updateUserProfile(
   }
 
   return data
+}
+
+export async function listDeliveryUsers(
+  client: DatabaseClient
+): Promise<DeliveryUser[]> {
+  const { data, error } = await client
+    .from('user_profiles')
+    .select('id, email, full_name, role, is_active, avatar_url, legacy_mock_id')
+    .eq('is_active', true)
+    .in('role', deliveryDirectoryRoles)
+    .order('role', { ascending: true })
+    .order('full_name', { ascending: true })
+
+  if (error) {
+    throw new Error(`Failed to list delivery user profiles: ${error.message}`)
+  }
+
+  return (data ?? []).map((profile) => ({
+    id: profile.legacy_mock_id ?? profile.id,
+    profileId: profile.id,
+    email: profile.email,
+    name: profile.full_name,
+    role: profile.role as DeliveryDirectoryRole,
+    avatar: profile.avatar_url ?? undefined,
+    isActive: profile.is_active,
+  }))
 }
 
 export async function touchUserLastLogin(

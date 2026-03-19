@@ -5,6 +5,18 @@ export type UserProfile = Database['public']['Tables']['user_profiles']['Row']
 export type UserProfileInsert = Database['public']['Tables']['user_profiles']['Insert']
 export type UserProfileUpdate = Database['public']['Tables']['user_profiles']['Update']
 
+export type DeliveryDirectoryRole = Extract<AppRole, 'admin' | 'pm' | 'developer'>
+
+export interface DeliveryUser {
+  id: string
+  profileId: string
+  email: string
+  name: string
+  role: DeliveryDirectoryRole
+  avatar?: string
+  isActive: boolean
+}
+
 export interface AuthenticatedPrincipal {
   userId: string
   email: string
