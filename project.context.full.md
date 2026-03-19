@@ -137,7 +137,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - migration `0012_phase_2i_lead_follow_up.sql` is applied to the linked Supabase project
   - app-route runtime validation confirms a seller can schedule, reschedule, clear, and reread persisted `nextFollowUpAt`
   - lead activity readback also confirms `nextFollowUpAt` changes are recorded in the persisted update history
-  - browser-level validation for the card/detail follow-up badges is still pending because the temporary CDP harness timed out before yielding stable evidence
+  - browser-level runtime validation now also exists through a repaired temporary Edge + CDP harness: `/dashboard/leads` cards and lead detail both rendered the persisted `Seguimiento programado`, `Vence hoy`, and `Atrasado` states, and those visible states survived browser reload
 - `supabase/migrations/0005_phase_2d_projects.sql` adds:
   - enum `project_status`
   - table `public.projects`
@@ -312,7 +312,7 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - Developer task visibility alignment for `/dashboard/tasks` and the delivery summary on `/dashboard` now have runtime validation evidence in the live browser.
   - Developer delivery reporting alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
   - Reports analytics realism alignment on `/dashboard/reports` now also has runtime validation evidence in the live browser.
-  - Manual lead follow-up scheduling is now implemented in repo code and has app-route runtime evidence, but browser-level UI validation is still pending before it can be treated as fully closed.
+  - Manual lead follow-up scheduling now has full runtime evidence in the active local flow, including browser-level validation for card/detail follow-up state and reload persistence.
   - Remaining gaps are broader delivery persistence, other commercial actionability gaps, and removal of mixed-mode fallback dependencies.
 - Phase 3 - Leads accionables y cercania
   - Status: partial
@@ -345,9 +345,9 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   3. Keep the current PM/admin rollup behavior stable while mixed-mode gaps are reduced
 
 ## Suggested next implementation slice
-- Name: `Phase 2I runtime closure`
+- Name: `Post-2I next slice selection`
 - Success criterion:
-  - `/dashboard/leads` and lead detail show honest scheduled/today/overdue state after reload in live browser validation
+  - choose the next bounded real-data slice deliberately without reopening already-closed 2I work or drifting into Phase 3 by default
 - Current code status:
   - Phase 2E is implemented in repository code
   - migration `0006_phase_2e_tasks.sql` is applied to the linked Supabase project
@@ -361,8 +361,8 @@ It should reflect only what is confirmed in the repo or clearly labeled as a rec
   - `/dashboard/reports` now derives delivery analytics from role-visible persisted data in Supabase mode, derives monthly lead trend from visible lead `createdAt`, and uses explicit empty states where real reporting basis does not yet exist
   - `/dashboard/leads` follow-up scheduling is implemented in repo code via `0012_phase_2i_lead_follow_up.sql`, lead contract updates, and lead detail/card UI
   - migration `0012` is already applied to the linked Supabase project
-  - app-route runtime validation already confirms schedule, reschedule, clear, reload, and activity-history behavior for `juan@noon.app`
-  - only the browser-level UI evidence for the follow-up badges/state remains open
+  - app-route runtime validation confirms schedule, reschedule, clear, reload, and activity-history behavior for `juan@noon.app`
+  - browser-level runtime validation now also confirms scheduled/today/overdue badges in card and detail plus reload persistence, so Phase 2I should now be treated as closed in runtime
 - Explicitly excluded from that follow-up until scoped:
   - Phase 3 proximity/radius logic
   - WhatsApp actionability

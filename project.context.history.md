@@ -525,6 +525,28 @@ This file stores session continuity, prior decisions, and evidence-backed reposi
   - contract/persistence evidence complete
   - browser-level UI evidence pending
 
+### Session 024
+- Date: 2026-03-18
+- Route used: system-testing -> system-docs
+- Objective: close the remaining browser-level runtime evidence for Phase 2I manual lead follow-up scheduling and update local context accordingly
+- Evidence gathered:
+  - reused the live local Next dev server at `http://127.0.0.1:3000` and the active Edge DevTools endpoint at `http://127.0.0.1:9222`
+  - repaired `tmp_validate_lead_follow_up_browser.mjs` so it now creates a fresh CDP page, waits on real DOM conditions instead of fixed sleeps, closes its sockets/page target cleanly, and deletes QA leads even on failure
+  - created three persisted QA leads as `juan@noon.app` covering the visible follow-up states `scheduled`, `due_today`, and `overdue`
+  - confirmed in `/dashboard/leads` that the three lead cards rendered `Seguimiento programado`, `Vence hoy`, and `Atrasado`
+  - opened lead detail for each QA lead and confirmed the same follow-up state was rendered in the detail surface
+  - reloaded the browser page and confirmed both card and detail continued to show the same persisted follow-up state for each validated case
+  - cleaned the QA leads after the browser validation completed
+- Validation outcome:
+  - Phase 2I now has browser-level runtime validation in addition to the earlier app-route contract evidence
+  - the prior failure was confirmed to be harness instability rather than a demonstrated product defect
+- Docs updated:
+  - `project.context.core.md`
+  - `project.context.full.md`
+  - `project.context.history.md`
+- Completion status:
+  - runtime validation closed for Phase 2I manual lead follow-up scheduling
+
 ## Historical decisions
 - Decision: keep `project.context.core.md` concise and operational
   - Why: day-to-day sessions need short trusted context
