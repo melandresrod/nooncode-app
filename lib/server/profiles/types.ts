@@ -17,6 +17,18 @@ export interface DeliveryUser {
   isActive: boolean
 }
 
+export interface AdminDirectoryUser {
+  profileId: string
+  legacyMockId: string | null
+  email: string
+  name: string
+  role: AppRole
+  avatar: string | null
+  isActive: boolean
+  createdAt: string
+  lastLoginAt: string | null
+}
+
 export interface AuthenticatedPrincipal {
   userId: string
   email: string

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
 import type {
+  AdminDirectoryUser,
   DeliveryDirectoryRole,
   DeliveryUser,
   SeedProfileInput,
@@ -120,6 +121,35 @@ export async function listDeliveryUsers(
     role: profile.role as DeliveryDirectoryRole,
     avatar: profile.avatar_url ?? undefined,
     isActive: profile.is_active,
+  }))
+}
+
+export async function listAdminDirectoryUsers(
+  client: DatabaseClient
+): Promise<AdminDirectoryUser[]> {
+  const { data, error } = await client
+    .from('user_profiles')
+    .select(
+      'id, email, full_name, role, is_active, avatar_url, legacy_mock_id, created_at, last_login_at'
+    )
+    .order('is_active', { ascending: false })
+    .order('role', { ascending: true })
+    .order('full_name', { ascending: true })
+
+  if (error) {
+    throw new Error(`Failed to list admin user profiles: ${error.message}`)
+  }
+
+  return (data ?? []).map((profile) => ({
+    profileId: profile.id,
+    legacyMockId: profile.legacy_mock_id,
+    email: profile.email,
+    name: profile.full_name,
+    role: profile.role,
+    avatar: profile.avatar_url,
+    isActive: profile.is_active,
+    createdAt: profile.created_at,
+    lastLoginAt: profile.last_login_at,
   }))
 }
 
