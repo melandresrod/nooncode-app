@@ -1,7 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useAuth } from '@/lib/auth-context'
+import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
+import { buildProjectDetailHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
 import {
   formatLeadFollowUpDateTime,
@@ -15,6 +17,7 @@ import type {
   LeadAssignmentStatus,
   LeadProposal,
   LeadStatus,
+  ProjectStatus,
   ProposalStatus,
 } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -25,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { LeadPrototypeCard } from '@/components/lead-prototype-card'
 import {
   Select,
   SelectContent,
@@ -101,6 +105,14 @@ const proposalStatusConfig: Record<ProposalStatus, { label: string; color: strin
   accepted: { label: 'Aceptada', color: 'bg-emerald-500/10 text-emerald-700' },
   rejected: { label: 'Rechazada', color: 'bg-red-500/10 text-red-700' },
   handoff_ready: { label: 'Lista para hand-off', color: 'bg-primary/10 text-primary' },
+}
+
+const projectStatusLabels: Record<ProjectStatus, string> = {
+  backlog: 'Backlog',
+  in_progress: 'En progreso',
+  review: 'Revision',
+  delivered: 'Entregado',
+  completed: 'Completado',
 }
 
 const assignmentStatusConfig: Record<LeadAssignmentStatus, { label: string; color: string }> = {
@@ -285,8 +297,12 @@ function buildGmailComposeUrl(email: string): string {
   return `https://mail.google.com/mail/?${params.toString()}`
 }
 
+function buildPhoneCallUrl(phone: string): string {
+  return `tel:${phone.trim()}`
+}
+
 export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
-  const { user } = useAuth()
+  const { authMode, user } = useAuth()
   const {
     updateLead,
     getLeadActivity,
@@ -297,7 +313,6 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
     claimLead,
     releaseLeadAsNoResponse,
     createProjectFromProposal,
-    projects,
   } = useData()
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedContent, setGeneratedContent] = useState('')
@@ -311,6 +326,7 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false)
   const [isMutatingAssignment, setIsMutatingAssignment] = useState(false)
   const [creatingProjectProposalId, setCreatingProjectProposalId] = useState<string | null>(null)
+  const [prototypeRefreshKey, setPrototypeRefreshKey] = useState(0)
   const [activeTab, setActiveTab] = useState('activity')
   const [followUpInput, setFollowUpInput] = useState(toDateTimeLocalValue(lead.nextFollowUpAt))
   const [proposalForm, setProposalForm] = useState({
@@ -318,16 +334,19 @@ export function LeadDetail({ lead, onStatusChange }: LeadDetailProps) {
     amount: lead.value.toString(),
     body: '',
   })
+  const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
   const gmailComposeUrl = hasValidEmail ? buildGmailComposeUrl(lead.email) : null
+  const hasCallablePhone = Boolean(lead.phone?.trim())
+  const phoneCallUrl = lead.phone?.trim() ? buildPhoneCallUrl(lead.phone) : null
   const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
   const followUpState = getLeadFollowUpState(lead.nextFollowUpAt)
   const followUpInfo = followUpState ? followUpStateConfig[followUpState] : null
-  const projectByProposalId = new Map(
-    projects
-      .filter((project) => project.sourceProposalId)
-      .map((project) => [project.sourceProposalId as string, project])
+  const proposalsWithLinkedProject = proposals.filter((proposal) => proposal.linkedProject)
+  const handoffReadyPendingProposals = proposals.filter(
+    (proposal) => proposal.status === 'handoff_ready' && !proposal.linkedProject
   )
+  const canOpenProjectsRoute = user ? canAccessDashboardPath(user.role, '/dashboard/projects') : false
   const lockedProposalTitle =
     proposals.find((proposal) => proposal.id === lead.lockedByProposalId)?.title ?? null
   const canManageAssignment =
@@ -477,6 +496,15 @@ Total: 8 semanas
   useEffect(() => {
     setFollowUpInput(toDateTimeLocalValue(lead.nextFollowUpAt))
   }, [lead.nextFollowUpAt])
+
+  useEffect(() => {
+    if (!isSupabaseMode) {
+      return
+    }
+
+    setIsGenerating(false)
+    setGeneratedContent('')
+  }, [isSupabaseMode, lead.id])
 
   const handleSaveNote = async () => {
     const trimmedNote = noteText.trim()
@@ -640,6 +668,7 @@ Total: 8 semanas
 
     try {
       const project = await createProjectFromProposal(lead.id, proposalId)
+      setPrototypeRefreshKey((current) => current + 1)
       toast.success(`Proyecto listo: ${project.name}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo crear el proyecto')
@@ -791,7 +820,7 @@ Total: 8 semanas
         {lead.phone && (
           <div className="flex items-center gap-2 text-sm">
             <Phone className="size-4 text-muted-foreground" />
-            <a href={`tel:${lead.phone}`} className="text-primary hover:underline">
+            <a href={buildPhoneCallUrl(lead.phone)} className="text-primary hover:underline">
               {lead.phone}
             </a>
           </div>
@@ -957,6 +986,73 @@ Total: 8 semanas
         </TabsContent>
 
         <TabsContent value="proposal" className="space-y-4 pt-4">
+          <LeadPrototypeCard
+            leadId={lead.id}
+            authMode={authMode}
+            isDisabled={isReleasedLeadPendingClaim}
+            refreshKey={prototypeRefreshKey}
+          />
+
+          <Card className="gap-4 py-4">
+            <CardHeader className="px-4">
+              <CardTitle className="text-base">Hand-off a delivery</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 space-y-3">
+              {proposalsWithLinkedProject.length > 0 ? (
+                proposalsWithLinkedProject.map((proposal) => (
+                  <div
+                    key={proposal.id}
+                    className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">
+                          Proyecto derivado: {proposal.linkedProject?.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Originado desde la propuesta "{proposal.title}".
+                        </p>
+                      </div>
+                      <Badge variant="outline">
+                        {proposal.linkedProject
+                          ? projectStatusLabels[proposal.linkedProject.status]
+                          : 'Proyecto'}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                      <span>
+                        Creado el {proposal.linkedProject?.createdAt.toLocaleString('es-MX')}
+                      </span>
+                      {!canOpenProjectsRoute ? (
+                        <span>Visible en delivery para roles con acceso.</span>
+                      ) : null}
+                    </div>
+                    {proposal.linkedProject && canOpenProjectsRoute ? (
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={buildProjectDetailHref(proposal.linkedProject.id)}>Ir a proyectos</Link>
+                      </Button>
+                    ) : null}
+                  </div>
+                ))
+              ) : handoffReadyPendingProposals.length > 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground space-y-2">
+                  <p className="font-medium text-foreground">Hand-off listo, pendiente de conversion</p>
+                  {handoffReadyPendingProposals.map((proposal) => (
+                    <p key={proposal.id}>
+                      "{proposal.title}"{proposal.handoffReadyAt
+                        ? ` lista desde ${proposal.handoffReadyAt.toLocaleString('es-MX')}`
+                        : ' lista para crear proyecto'}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Aun no existe proyecto derivado de esta oportunidad.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="gap-4 py-4">
             <CardHeader className="px-4">
               <CardTitle className="text-base">Registrar propuesta comercial</CardTitle>
@@ -1078,16 +1174,16 @@ Total: 8 semanas
                       {proposal.body}
                     </p>
 
-                    {projectByProposalId.get(proposal.id) && (
+                    {proposal.linkedProject && (
                       <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">
                         <FolderKanban className="size-4" />
-                        Proyecto creado: {projectByProposalId.get(proposal.id)?.name}
+                        Proyecto creado: {proposal.linkedProject.name}
                       </div>
                     )}
 
                     <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
                       <div className="text-xs text-muted-foreground">
-                        {projectByProposalId.get(proposal.id)
+                        {proposal.linkedProject
                           ? 'Hand-off convertido y persistido en proyectos.'
                           : proposal.handoffReadyAt
                           ? `Hand-off listo desde ${proposal.handoffReadyAt.toLocaleString('es-MX')}`
@@ -1120,12 +1216,12 @@ Total: 8 semanas
                     {proposal.status === 'handoff_ready' && (
                       <Button
                         type="button"
-                        variant={projectByProposalId.get(proposal.id) ? 'secondary' : 'default'}
+                        variant={proposal.linkedProject ? 'secondary' : 'default'}
                         onClick={() => handleCreateProject(proposal.id)}
                         disabled={
                           isReleasedLeadPendingClaim ||
                           creatingProjectProposalId === proposal.id ||
-                          Boolean(projectByProposalId.get(proposal.id))
+                          Boolean(proposal.linkedProject)
                         }
                       >
                         {creatingProjectProposalId === proposal.id ? (
@@ -1133,7 +1229,7 @@ Total: 8 semanas
                         ) : (
                           <FolderKanban className="size-4 mr-2" />
                         )}
-                        {projectByProposalId.get(proposal.id) ? 'Proyecto creado' : 'Crear proyecto'}
+                        {proposal.linkedProject ? 'Proyecto creado' : 'Crear proyecto'}
                       </Button>
                     )}
                   </div>
@@ -1180,10 +1276,23 @@ Total: 8 semanas
               <MessageSquare className="size-4 mr-2" />
               Abrir en Gmail
             </Button>
-            <Button variant="outline" className="flex-1 bg-transparent" disabled={isReleasedLeadPendingClaim}>
-              <Phone className="size-4 mr-2" />
-              Llamar
-            </Button>
+            {isSupabaseMode && phoneCallUrl && !isReleasedLeadPendingClaim ? (
+              <Button asChild variant="outline" className="flex-1 bg-transparent">
+                <a href={phoneCallUrl}>
+                  <Phone className="size-4 mr-2" />
+                  Llamar
+                </a>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="flex-1 bg-transparent"
+                disabled={isReleasedLeadPendingClaim || (isSupabaseMode && !phoneCallUrl)}
+              >
+                <Phone className="size-4 mr-2" />
+                {isSupabaseMode && !phoneCallUrl ? 'Llamar no disponible' : 'Llamar'}
+              </Button>
+            )}
             <Button
               variant="outline"
               className="flex-1 bg-transparent"
@@ -1197,68 +1306,78 @@ Total: 8 semanas
         </TabsContent>
 
         <TabsContent value="ai" className="space-y-4 pt-4">
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleGenerateEmail}
-              disabled={isGenerating}
-              className="flex-1 bg-transparent"
-            >
-              <Sparkles className="size-4 mr-2" />
-              Generar Email
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleGenerateProposal}
-              disabled={isGenerating}
-              className="flex-1 bg-transparent"
-            >
-              <FileText className="size-4 mr-2" />
-              Generar Propuesta
-            </Button>
-          </div>
-
-          {isGenerating && (
-            <div className="p-8 text-center">
-              <div className="animate-pulse flex flex-col items-center gap-2">
-                <Sparkles className="size-8 text-primary" />
-                <p className="text-sm text-muted-foreground">Maxwell esta generando contenido...</p>
-              </div>
+          {isSupabaseMode ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              La generacion contextual desde esta ficha aun no esta conectada al runtime real.
+              Esta tab no puede redactar contenido, enviarlo ni guardar propuestas generadas por IA en
+              modo supabase.
             </div>
-          )}
-
-          {generatedContent && !isGenerating && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Contenido generado</p>
-                <Button size="sm" variant="ghost" onClick={copyToClipboard}>
-                  <Copy className="size-4 mr-1" />
-                  Copiar
-                </Button>
-              </div>
-              <div className="p-4 bg-muted/50 rounded-lg max-h-64 overflow-y-auto">
-                <pre className="text-sm whitespace-pre-wrap font-sans">{generatedContent}</pre>
-              </div>
+          ) : (
+            <>
               <div className="flex gap-2">
-                <Button className="flex-1" disabled={isReleasedLeadPendingClaim}>
-                  <Send className="size-4 mr-2" />
-                  Enviar al cliente
+                <Button
+                  variant="outline"
+                  onClick={handleGenerateEmail}
+                  disabled={isGenerating}
+                  className="flex-1 bg-transparent"
+                >
+                  <Sparkles className="size-4 mr-2" />
+                  Generar Email
                 </Button>
                 <Button
                   variant="outline"
+                  onClick={handleGenerateProposal}
+                  disabled={isGenerating}
                   className="flex-1 bg-transparent"
-                  onClick={handleSaveGeneratedProposal}
-                  disabled={isSavingProposal || isReleasedLeadPendingClaim}
                 >
-                  {isSavingProposal ? (
-                    <Loader2 className="size-4 mr-2 animate-spin" />
-                  ) : (
-                    <FileText className="size-4 mr-2" />
-                  )}
-                  Guardar propuesta
+                  <FileText className="size-4 mr-2" />
+                  Generar Propuesta
                 </Button>
               </div>
-            </div>
+
+              {isGenerating && (
+                <div className="p-8 text-center">
+                  <div className="animate-pulse flex flex-col items-center gap-2">
+                    <Sparkles className="size-8 text-primary" />
+                    <p className="text-sm text-muted-foreground">Maxwell esta generando contenido...</p>
+                  </div>
+                </div>
+              )}
+
+              {generatedContent && !isGenerating && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Contenido generado</p>
+                    <Button size="sm" variant="ghost" onClick={copyToClipboard}>
+                      <Copy className="size-4 mr-1" />
+                      Copiar
+                    </Button>
+                  </div>
+                  <div className="p-4 bg-muted/50 rounded-lg max-h-64 overflow-y-auto">
+                    <pre className="text-sm whitespace-pre-wrap font-sans">{generatedContent}</pre>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button className="flex-1" disabled={isReleasedLeadPendingClaim}>
+                      <Send className="size-4 mr-2" />
+                      Enviar al cliente
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 bg-transparent"
+                      onClick={handleSaveGeneratedProposal}
+                      disabled={isSavingProposal || isReleasedLeadPendingClaim}
+                    >
+                      {isSavingProposal ? (
+                        <Loader2 className="size-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileText className="size-4 mr-2" />
+                      )}
+                      Guardar propuesta
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
       </Tabs>

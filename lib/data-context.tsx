@@ -41,6 +41,10 @@ import {
   type ProjectWire,
 } from '@/lib/projects/serialization'
 import {
+  deserializeProjectVisibleActivity,
+  type ProjectVisibleActivityWire,
+} from '@/lib/projects/activity-serialization'
+import {
   deserializeTask,
   type TaskWire,
 } from '@/lib/tasks/serialization'
@@ -84,6 +88,7 @@ interface DataContextType {
   updateProject: (id: string, updates: ProjectUpdates) => Promise<Project> | void
   deleteProject: (id: string) => void
   updateProjectStatus: (id: string, status: ProjectStatus) => Promise<Project> | void
+  refreshProjects: () => Promise<void>
 
   // Tasks
   tasks: Task[]
@@ -592,7 +597,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       })
 
-    if (user && ['admin', 'pm', 'developer'].includes(user.role)) {
+    if (user && ['admin', 'sales_manager', 'pm', 'developer'].includes(user.role)) {
       loadDeliveryUsers()
         .catch(() => {
           if (isActive) {
@@ -943,6 +948,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ...(prev[leadId] ?? []),
         ],
       }))
+      setLeadProposalsByLeadId((prev) => ({
+        ...prev,
+        [leadId]: (prev[leadId] ?? []).map((proposalItem) =>
+          proposalItem.id === proposalId
+            ? {
+                ...proposalItem,
+                linkedProject: {
+                  id: project.id,
+                  name: project.name,
+                  status: project.status,
+                  createdAt: project.createdAt,
+                },
+              }
+            : proposalItem
+        ),
+      }))
 
       return project
     }
@@ -971,6 +992,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (leadActivityByLeadIdRef.current[leadId]) {
       void getLeadActivity(leadId)
     }
+    setLeadProposalsByLeadId((prev) => ({
+      ...prev,
+      [leadId]: (prev[leadId] ?? []).map((proposalItem) =>
+        proposalItem.id === proposalId
+          ? {
+              ...proposalItem,
+              linkedProject: {
+                id: project.id,
+                name: project.name,
+                status: project.status,
+                createdAt: project.createdAt,
+              },
+            }
+          : proposalItem
+      ),
+    }))
 
     return project
   }, [authMode, getLeadActivity, leads, projects, user])
@@ -1397,6 +1434,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return updateProject(id, { status })
   }, [updateProject])
 
+  const refreshProjects = useCallback(async () => {
+    if (authMode !== 'supabase') {
+      return
+    }
+
+    await loadProjects()
+  }, [authMode, loadProjects])
+
   // Task operations
   const addTask = useCallback(async (taskData: TaskDraft) => {
     const normalizedTask = normalizeTaskAssignment(taskData)
@@ -1581,6 +1626,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [authMode])
 
   const getProjectActivity = useCallback(async (projectId: string) => {
+    if (authMode === 'supabase' && isUuid(projectId)) {
+      const response = await fetch(`/api/projects/${projectId}/activity`, {
+        method: 'GET',
+        cache: 'no-store',
+      })
+      const payload = await readApiResponse<ProjectVisibleActivityWire[]>(response)
+      return payload.map(deserializeProjectVisibleActivity)
+    }
+
     const projectTasks = tasks.filter((task) => task.projectId === projectId)
 
     if (projectTasks.length === 0) {
@@ -1593,12 +1647,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         return activities.map<ProjectTaskActivity>((activity) => ({
           id: activity.id,
+          sourceKind: 'task_activity',
+          projectId,
           taskId: task.id,
           taskTitle: task.title,
           type: activity.type,
           actorId: activity.actorId,
           actorName: activity.actorName,
           noteBody: activity.noteBody,
+          metadata: activity.metadata,
           createdAt: activity.createdAt,
         }))
       })
@@ -1711,14 +1768,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [rewards, deductPoints]
   )
 
-  const projectBoardProjects =
-    authMode === 'supabase' && user?.role === 'developer'
-      ? persistedProjects
-      : projects
-  const taskBoardTasks =
-    authMode === 'supabase' && user?.role === 'developer'
-      ? persistedTasks
-      : tasks
+  // In Supabase mode, delivery workspaces should reflect only persisted project/task truth.
+  const usePersistedDeliveryBoards = authMode === 'supabase'
+  const projectBoardProjects = usePersistedDeliveryBoards ? persistedProjects : projects
+  const taskBoardTasks = usePersistedDeliveryBoards ? persistedTasks : tasks
 
   return (
     <DataContext.Provider
@@ -1744,6 +1797,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updateProject,
         deleteProject,
         updateProjectStatus,
+        refreshProjects,
         tasks,
         persistedTasks,
         taskBoardTasks,

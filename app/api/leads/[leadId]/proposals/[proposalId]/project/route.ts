@@ -8,11 +8,13 @@ import { getLeadProposalById } from '@/lib/server/leads/proposal-repository'
 import {
   createProject,
   getProjectByProposalId,
+  getProjectById,
 } from '@/lib/server/projects/repository'
 import {
   mapLeadAndProposalToProjectInsert,
   mapProjectRowToWire,
 } from '@/lib/server/projects/mappers'
+import { linkVisibleLeadPrototypeWorkspaceToProject } from '@/lib/server/prototypes/service'
 
 const routeParamsSchema = z.object({
   leadId: z.string().uuid(),
@@ -69,8 +71,11 @@ export async function POST(
     const existingProject = await getProjectByProposalId(client, proposalId)
 
     if (existingProject) {
+      await linkVisibleLeadPrototypeWorkspaceToProject(client, leadId, existingProject.id)
+      const reloadedProject = await getProjectById(client, existingProject.id)
+
       return NextResponse.json({
-        data: mapProjectRowToWire(existingProject),
+        data: mapProjectRowToWire(reloadedProject ?? existingProject),
         meta: {
           created: false,
         },
@@ -81,10 +86,12 @@ export async function POST(
       client,
       mapLeadAndProposalToProjectInsert(lead, proposal, principal.userId)
     )
+    await linkVisibleLeadPrototypeWorkspaceToProject(client, leadId, project.id)
+    const reloadedProject = await getProjectById(client, project.id)
 
     return NextResponse.json(
       {
-        data: mapProjectRowToWire(project),
+        data: mapProjectRowToWire(reloadedProject ?? project),
         meta: {
           created: true,
         },

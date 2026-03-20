@@ -3,10 +3,13 @@ import { z } from 'zod'
 import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
+import { listLeadActivities } from '@/lib/server/leads/activity-repository'
+import { findProposalLinkedProjectFromActivities } from '@/lib/server/leads/proposal-lineage'
 import {
   getLeadProposalById,
   updateLeadProposalById,
 } from '@/lib/server/leads/proposal-repository'
+import { getProjectByProposalId } from '@/lib/server/projects/repository'
 import {
   mapLeadProposalRowToWire,
   mapUpdateLeadProposalInputToUpdate,
@@ -51,9 +54,14 @@ export async function PATCH(
       proposalId,
       mapUpdateLeadProposalInputToUpdate(payload)
     )
+    const linkedProject = await getProjectByProposalId(client, proposalId)
+    const leadActivities = linkedProject ? [] : await listLeadActivities(client, leadId)
 
     return NextResponse.json({
-      data: mapLeadProposalRowToWire(updatedProposal),
+      data: mapLeadProposalRowToWire(
+        updatedProposal,
+        linkedProject ?? findProposalLinkedProjectFromActivities(leadActivities, proposalId)
+      ),
     })
   } catch (error) {
     return toErrorResponse(error)

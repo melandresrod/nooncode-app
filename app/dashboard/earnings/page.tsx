@@ -2,11 +2,14 @@
 
 import { useState } from 'react'
 import { useAuth, getRoleLabel } from '@/lib/auth-context'
-import { useData } from '@/lib/data-context'
-import { selectEarningsSummary } from '@/lib/dashboard-selectors'
+import {
+  selectEarningsSummary,
+  selectPersonalStatsAvailability,
+} from '@/lib/dashboard-selectors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -27,6 +30,9 @@ import {
   CreditCard,
   FileText,
   Download,
+  CircleOff,
+  ShieldAlert,
+  Banknote,
 } from 'lucide-react'
 
 interface Commission {
@@ -91,115 +97,195 @@ const statusConfig = {
   paid: { label: 'Pagada', color: 'bg-green-500/10 text-green-600' },
 }
 
+function EarningsUnavailableState({
+  title,
+  description,
+  icon: Icon,
+}: {
+  title: string
+  description: string
+  icon: typeof CircleOff
+}) {
+  return (
+    <Card>
+      <CardContent className="min-h-[280px]">
+        <Empty className="h-full border-0 p-0">
+          <EmptyHeader className="my-auto">
+            <EmptyMedia variant="icon">
+              <Icon className="size-5" />
+            </EmptyMedia>
+            <EmptyTitle>{title}</EmptyTitle>
+            <EmptyDescription>{description}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function EarningsPage() {
-  const { user } = useAuth()
-  const { users } = useData()
+  const { authMode, user } = useAuth()
   const [activeTab, setActiveTab] = useState('overview')
 
   if (!user) return null
 
-  const sharedUser = users.find((candidate) => candidate.id === user.id) ?? user
-
-  const {
-    totalEarnings,
-    pendingCommissions,
-    approvedCommissions,
-    monthlyGoal,
-    monthlyProgress,
-    remainingToGoal,
-  } = selectEarningsSummary(sharedUser.balance, mockCommissions)
+  const personalStats = selectPersonalStatsAvailability(authMode, user)
+  const earningsSummary = personalStats.isRealDataAvailable
+    ? selectEarningsSummary(user.balance, mockCommissions)
+    : null
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Mis Ganancias</h1>
           <p className="text-muted-foreground">
-            Balance, comisiones y historial de transacciones
+            {personalStats.isRealDataAvailable
+              ? 'Balance, comisiones y historial de transacciones'
+              : personalStats.earningsDescription}
           </p>
         </div>
-        <Button className="w-fit">
+        <Button
+          className="w-fit"
+          variant={personalStats.isRealDataAvailable ? 'default' : 'outline'}
+          disabled={!personalStats.isRealDataAvailable}
+        >
           <CreditCard className="size-4 mr-2" />
-          Solicitar Retiro
+          {personalStats.earningsActionLabel}
         </Button>
       </div>
 
-      {/* Balance Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="bg-primary text-primary-foreground">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-primary-foreground/80">
-              Balance Disponible
-            </CardTitle>
-            <Wallet className="size-4 text-primary-foreground/80" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">${sharedUser.balance.toLocaleString()}</div>
-            <p className="text-xs text-primary-foreground/70 mt-1">
-              Disponible para retiro
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Comisiones Pendientes</CardTitle>
-            <Clock className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${pendingCommissions.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">En espera de aprobacion</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Comisiones Aprobadas</CardTitle>
-            <CheckCircle2 className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${approvedCommissions.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Listas para pago</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ganado</CardTitle>
-            <TrendingUp className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${totalEarnings.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <ArrowUpRight className="size-3 text-green-600" />
-              <span className="text-green-600">+18%</span> vs mes anterior
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Monthly Goal */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base">Meta del Mes</CardTitle>
-              <CardDescription>Progreso hacia tu objetivo mensual</CardDescription>
-            </div>
-            <span className="text-2xl font-bold">
-              ${sharedUser.balance.toLocaleString()} / ${monthlyGoal.toLocaleString()}
-            </span>
+      {personalStats.isRealDataAvailable ? (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card className="bg-primary text-primary-foreground">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-primary-foreground/80">
+                  Balance Disponible
+                </CardTitle>
+                <Wallet className="size-4 text-primary-foreground/80" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">${user.balance.toLocaleString()}</div>
+                <p className="text-xs text-primary-foreground/70 mt-1">
+                  Disponible para retiro
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Comisiones Pendientes</CardTitle>
+                <Clock className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">${earningsSummary?.pendingCommissions.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">En espera de aprobacion</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Comisiones Aprobadas</CardTitle>
+                <CheckCircle2 className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">${earningsSummary?.approvedCommissions.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">Listas para pago</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Ganado</CardTitle>
+                <TrendingUp className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">${earningsSummary?.totalEarnings.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <ArrowUpRight className="size-3 text-green-600" />
+                  <span className="text-green-600">+18%</span> vs mes anterior
+                </p>
+              </CardContent>
+            </Card>
           </div>
-        </CardHeader>
-        <CardContent>
-          <Progress value={monthlyProgress} className="h-3" />
-          <p className="text-sm text-muted-foreground mt-2">
-            {monthlyProgress >= 100
-              ? 'Meta alcanzada!'
-              : `Faltan $${remainingToGoal.toLocaleString()} para tu meta`}
-          </p>
-        </CardContent>
-      </Card>
 
-      {/* Tabs */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Meta del Mes</CardTitle>
+                  <CardDescription>Progreso hacia tu objetivo mensual</CardDescription>
+                </div>
+                <span className="text-2xl font-bold">
+                  ${user.balance.toLocaleString()} / ${earningsSummary?.monthlyGoal.toLocaleString()}
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Progress value={earningsSummary?.monthlyProgress} className="h-3" />
+              <p className="text-sm text-muted-foreground mt-2">
+                {earningsSummary && earningsSummary.monthlyProgress >= 100
+                  ? 'Meta alcanzada!'
+                  : `Faltan $${earningsSummary?.remainingToGoal.toLocaleString()} para tu meta`}
+              </p>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Balance Disponible</CardTitle>
+                <Wallet className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{personalStats.balanceValueLabel}</div>
+                <p className="text-xs text-muted-foreground">{personalStats.balanceDescription}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Comisiones</CardTitle>
+                <Clock className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Sin historial real</div>
+                <p className="text-xs text-muted-foreground">No existe una fuente real de comisiones aprobadas o pendientes.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Transacciones</CardTitle>
+                <Banknote className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">No disponibles</div>
+                <p className="text-xs text-muted-foreground">No hay ledger financiero ni estado de cuenta real conectado.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Retiros</CardTitle>
+                <ShieldAlert className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">Deshabilitados</div>
+                <p className="text-xs text-muted-foreground">La accion queda bloqueada hasta tener pagos y retiros reales.</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{personalStats.earningsTitle}</CardTitle>
+              <CardDescription>{personalStats.earningsDescription}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
+            </CardContent>
+          </Card>
+        </>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="overview">Resumen</TabsTrigger>
@@ -208,163 +294,185 @@ export default function EarningsPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Recent Commissions */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Comisiones Recientes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockCommissions.slice(0, 3).map((commission) => (
-                    <div key={commission.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-sm">{commission.projectName}</p>
-                        <p className="text-xs text-muted-foreground">{commission.clientName}</p>
+          {personalStats.isRealDataAvailable ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Comisiones Recientes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {mockCommissions.slice(0, 3).map((commission) => (
+                      <div key={commission.id} className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{commission.projectName}</p>
+                          <p className="text-xs text-muted-foreground">{commission.clientName}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-sm">+${commission.amount.toLocaleString()}</p>
+                          <Badge variant="outline" className={statusConfig[commission.status].color}>
+                            {statusConfig[commission.status].label}
+                          </Badge>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-sm">+${commission.amount.toLocaleString()}</p>
-                        <Badge variant="outline" className={statusConfig[commission.status].color}>
-                          {statusConfig[commission.status].label}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Commission Breakdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Desglose por Rol</CardTitle>
-                <CardDescription>Comision segun tu rol: {getRoleLabel(user.role)}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <DollarSign className="size-5 text-primary" />
-                      <div>
-                        <p className="font-medium">Comision por venta</p>
-                        <p className="text-xs text-muted-foreground">Por cada deal cerrado</p>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Desglose por Rol</CardTitle>
+                  <CardDescription>Comision segun tu rol: {getRoleLabel(user.role)}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <DollarSign className="size-5 text-primary" />
+                        <div>
+                          <p className="font-medium">Comision por venta</p>
+                          <p className="text-xs text-muted-foreground">Por cada deal cerrado</p>
+                        </div>
                       </div>
+                      <span className="text-lg font-bold text-primary">5%</span>
                     </div>
-                    <span className="text-lg font-bold text-primary">5%</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <TrendingUp className="size-5 text-accent" />
-                      <div>
-                        <p className="font-medium">Bono por meta</p>
-                        <p className="text-xs text-muted-foreground">Al alcanzar meta mensual</p>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <TrendingUp className="size-5 text-accent" />
+                        <div>
+                          <p className="font-medium">Bono por meta</p>
+                          <p className="text-xs text-muted-foreground">Al alcanzar meta mensual</p>
+                        </div>
                       </div>
+                      <span className="text-lg font-bold text-accent">$500</span>
                     </div>
-                    <span className="text-lg font-bold text-accent">$500</span>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <EarningsUnavailableState
+              title="Sin resumen real de ganancias"
+              description="Tu cuenta usa autenticacion real, pero todavia no existe una fuente real de balance, comisiones o bonos."
+              icon={CircleOff}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="commissions" className="mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Historial de Comisiones</CardTitle>
-                <Button variant="outline" size="sm">
-                  <Download className="size-4 mr-2" />
-                  Exportar
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Proyecto</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Porcentaje</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Fecha</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockCommissions.map((commission) => (
-                    <TableRow key={commission.id}>
-                      <TableCell className="font-medium">{commission.projectName}</TableCell>
-                      <TableCell>{commission.clientName}</TableCell>
-                      <TableCell>{commission.percentage}%</TableCell>
-                      <TableCell className="font-semibold">${commission.amount.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={statusConfig[commission.status].color}>
-                          {statusConfig[commission.status].label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{commission.date.toLocaleDateString('es-MX')}</TableCell>
+          {personalStats.isRealDataAvailable ? (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Historial de Comisiones</CardTitle>
+                  <Button variant="outline" size="sm">
+                    <Download className="size-4 mr-2" />
+                    Exportar
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Proyecto</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Porcentaje</TableHead>
+                      <TableHead>Monto</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Fecha</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {mockCommissions.map((commission) => (
+                      <TableRow key={commission.id}>
+                        <TableCell className="font-medium">{commission.projectName}</TableCell>
+                        <TableCell>{commission.clientName}</TableCell>
+                        <TableCell>{commission.percentage}%</TableCell>
+                        <TableCell className="font-semibold">${commission.amount.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={statusConfig[commission.status].color}>
+                            {statusConfig[commission.status].label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{commission.date.toLocaleDateString('es-MX')}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          ) : (
+            <EarningsUnavailableState
+              title="Sin historial real de comisiones"
+              description="Las comisiones demo fueron retiradas en modo Supabase para no aparentar exactitud donde todavia no hay fuente real."
+              icon={DollarSign}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="transactions" className="mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Historial de Transacciones</CardTitle>
-                <Button variant="outline" size="sm">
-                  <FileText className="size-4 mr-2" />
-                  Estado de cuenta
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockTransactions.map((transaction) => (
-                  <div
-                    key={transaction.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`size-10 rounded-full flex items-center justify-center ${
-                        transaction.type === 'payout'
-                          ? 'bg-destructive/10 text-destructive'
-                          : 'bg-green-500/10 text-green-600'
+          {personalStats.isRealDataAvailable ? (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Historial de Transacciones</CardTitle>
+                  <Button variant="outline" size="sm">
+                    <FileText className="size-4 mr-2" />
+                    Estado de cuenta
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {mockTransactions.map((transaction) => (
+                    <div
+                      key={transaction.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`size-10 rounded-full flex items-center justify-center ${
+                          transaction.type === 'payout'
+                            ? 'bg-destructive/10 text-destructive'
+                            : 'bg-green-500/10 text-green-600'
+                        }`}>
+                          {transaction.type === 'payout' ? (
+                            <CreditCard className="size-5" />
+                          ) : transaction.type === 'bonus' ? (
+                            <TrendingUp className="size-5" />
+                          ) : (
+                            <DollarSign className="size-5" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium">{transaction.description}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {transaction.date.toLocaleDateString('es-MX', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`text-lg font-bold ${
+                        transaction.amount < 0 ? 'text-destructive' : 'text-green-600'
                       }`}>
-                        {transaction.type === 'payout' ? (
-                          <CreditCard className="size-5" />
-                        ) : transaction.type === 'bonus' ? (
-                          <TrendingUp className="size-5" />
-                        ) : (
-                          <DollarSign className="size-5" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium">{transaction.description}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {transaction.date.toLocaleDateString('es-MX', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          })}
-                        </p>
-                      </div>
+                        {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toLocaleString()}
+                      </span>
                     </div>
-                    <span className={`text-lg font-bold ${
-                      transaction.amount < 0 ? 'text-destructive' : 'text-green-600'
-                    }`}>
-                      {transaction.amount < 0 ? '-' : '+'}${Math.abs(transaction.amount).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <EarningsUnavailableState
+              title="Sin transacciones reales"
+              description="No hay estado de cuenta, pagos o retiros reales disponibles para esta cuenta en el runtime actual."
+              icon={FileText}
+            />
+          )}
         </TabsContent>
       </Tabs>
     </div>

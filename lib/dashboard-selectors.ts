@@ -10,6 +10,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react'
+import type { AuthMode } from '@/lib/auth-user'
 import type { Lead, PointEvent, Project, Reward, SettingsUser, Task, User, UserRole } from './types'
 import { deriveProjectDisplayStatus } from '@/lib/projects/progress'
 
@@ -33,6 +34,15 @@ interface DeliverySummary {
 export interface DashboardSummary {
   sales: SalesSummary
   delivery: DeliverySummary
+}
+
+export interface DashboardKpiCopyModel {
+  headerSummaryLabel: string
+  salesOpenLeadsNote: string
+  salesWonLeadsNote: string
+  salesRevenueTitle: string
+  salesRevenueNote: string
+  deliveryCompletedProjectsNote: string
 }
 
 export type LeadStatusFilter = Lead['status'] | 'all'
@@ -134,6 +144,22 @@ export interface RewardRedeemDialogModel {
   canAfford: boolean
 }
 
+export interface PersonalStatsAvailabilityModel {
+  isRealDataAvailable: boolean
+  balanceValueLabel: string
+  balanceDescription: string
+  pointsValueLabel: string
+  pointsDescription: string
+  earningsTitle: string
+  earningsDescription: string
+  rewardsTitle: string
+  rewardsDescription: string
+  earningsActionLabel: string
+  rewardsActionLabel: string
+  sidebarBalanceLabel: string
+  sidebarPointsLabel: string
+}
+
 export interface ReportsStatsSummary {
   totalLeads: number
   wonLeads: number
@@ -143,6 +169,11 @@ export interface ReportsStatsSummary {
   activeProjects: number
   completedTasks: number
   avgScore: number
+}
+
+export interface ReportsRevenueKpiCopyModel {
+  title: string
+  averageLabel: string
 }
 
 export interface ReportsPipelineDatum {
@@ -218,6 +249,45 @@ export const settingsNotificationOptions: Array<{
   { id: 'commission_approved', label: 'Comision aprobada', desc: 'Cuando una comision es aprobada' },
   { id: 'points_earned', label: 'Puntos ganados', desc: 'Cuando acumulas nuevos puntos' },
 ]
+
+export function selectPersonalStatsAvailability(
+  authMode: AuthMode,
+  user: User
+): PersonalStatsAvailabilityModel {
+  if (authMode === 'mock') {
+    return {
+      isRealDataAvailable: true,
+      balanceValueLabel: `$${user.balance.toLocaleString()}`,
+      balanceDescription: 'Disponible para retiro en el entorno demo.',
+      pointsValueLabel: user.points.toLocaleString(),
+      pointsDescription: 'Disponibles para canjear en el entorno demo.',
+      earningsTitle: 'Ganancias demo',
+      earningsDescription: 'Balance, comisiones y retiros operan con datos demo en este modo.',
+      rewardsTitle: 'Rewards demo',
+      rewardsDescription: 'Puntos, historial y canje operan con datos demo en este modo.',
+      earningsActionLabel: 'Solicitar Retiro',
+      rewardsActionLabel: 'Canjear',
+      sidebarBalanceLabel: `Balance: $${user.balance.toLocaleString()}`,
+      sidebarPointsLabel: `Puntos: ${user.points.toLocaleString()}`,
+    }
+  }
+
+  return {
+    isRealDataAvailable: false,
+    balanceValueLabel: 'Sin datos reales',
+    balanceDescription: 'No hay una fuente real de comisiones o pagos conectada a tu cuenta.',
+    pointsValueLabel: 'Sin programa real',
+    pointsDescription: 'Puntos y recompensas todavia no estan conectados al runtime real.',
+    earningsTitle: 'Ganancias no conectadas',
+    earningsDescription: 'No existe una fuente real de comisiones, pagos o retiros para esta cuenta en modo Supabase.',
+    rewardsTitle: 'Rewards no conectadas',
+    rewardsDescription: 'No existe una fuente real de puntos, historial o canje para esta cuenta en modo Supabase.',
+    earningsActionLabel: 'Retiros no disponibles',
+    rewardsActionLabel: 'Canje no disponible',
+    sidebarBalanceLabel: 'Balance: no disponible',
+    sidebarPointsLabel: 'Puntos: sin fuente real',
+  }
+}
 
 const settingsDemoRoles: UserRole[] = ['admin', 'sales_manager', 'sales', 'pm', 'developer']
 
@@ -358,6 +428,28 @@ export function selectDashboardSummary(
   }
 
   return { sales, delivery }
+}
+
+export function selectDashboardKpiCopy(authMode: AuthMode): DashboardKpiCopyModel {
+  if (authMode === 'mock') {
+    return {
+      headerSummaryLabel: 'Aqui esta el resumen de hoy',
+      salesOpenLeadsNote: '+12% vs mes anterior',
+      salesWonLeadsNote: 'Este mes',
+      salesRevenueTitle: 'Revenue total',
+      salesRevenueNote: '+23% vs mes anterior',
+      deliveryCompletedProjectsNote: 'Este mes',
+    }
+  }
+
+  return {
+    headerSummaryLabel: 'Aqui esta tu resumen visible actual',
+    salesOpenLeadsNote: 'Sin comparativa real disponible',
+    salesWonLeadsNote: 'Total visible sin corte mensual real',
+    salesRevenueTitle: 'Valor ganado visible',
+    salesRevenueNote: 'Acumulado visible en leads ganados',
+    deliveryCompletedProjectsNote: 'Total visible sin corte mensual real',
+  }
 }
 
 export function selectLeadList(leads: Lead[], options: LeadListOptions): Lead[] {
@@ -651,6 +743,20 @@ export function selectReportsViewModel(
           ? Math.round(leads.reduce((sum, lead) => sum + lead.score, 0) / totalLeads)
           : 0,
     },
+  }
+}
+
+export function selectReportsRevenueKpiCopy(authMode: AuthMode): ReportsRevenueKpiCopyModel {
+  if (authMode === 'mock') {
+    return {
+      title: 'Ingresos Totales',
+      averageLabel: 'por venta',
+    }
+  }
+
+  return {
+    title: 'Valor ganado visible',
+    averageLabel: 'por lead ganado visible',
   }
 }
 

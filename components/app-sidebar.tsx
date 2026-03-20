@@ -2,14 +2,19 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import {
   Sun,
+  Activity,
+  Bell,
+  Blocks,
   LayoutDashboard,
   Users,
   Kanban,
   FolderKanban,
   ListTodo,
   DollarSign,
+  Wallet,
   Gift,
   Settings,
   LogOut,
@@ -25,6 +30,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -38,12 +44,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { useAuth, canAccessSales, canAccessDelivery, canAccessAdmin, getRoleLabel } from '@/lib/auth-context'
+import {
+  useAuth,
+  canAccessSales,
+  canAccessDashboardPath,
+  canAccessAdmin,
+  getRoleLabel,
+} from '@/lib/auth-context'
+import { selectPersonalStatsAvailability } from '@/lib/dashboard-selectors'
+import { NOTIFICATIONS_UPDATED_EVENT } from '@/lib/notifications/client-events'
 import { useRouter } from 'next/navigation'
 
 const salesNavItems = [
   { title: 'Leads', href: '/dashboard/leads', icon: Users },
   { title: 'Pipeline', href: '/dashboard/pipeline', icon: Kanban },
+  { title: 'Prototipos', href: '/dashboard/prototypes', icon: Blocks },
 ]
 
 const deliveryNavItems = [
@@ -51,7 +66,14 @@ const deliveryNavItems = [
   { title: 'Mis Tareas', href: '/dashboard/tasks', icon: ListTodo },
 ]
 
+const workspaceNavItems = [
+  { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { title: 'Actualizaciones', href: '/dashboard/updates', icon: Activity },
+  { title: 'Notificaciones', href: '/dashboard/notifications', icon: Bell },
+]
+
 const financeNavItems = [
+  { title: 'Creditos', href: '/dashboard/credits', icon: Wallet },
   { title: 'Earnings', href: '/dashboard/earnings', icon: DollarSign },
   { title: 'Recompensas', href: '/dashboard/rewards', icon: Gift },
   { title: 'Reportes', href: '/dashboard/reports', icon: BarChart3 },
@@ -63,10 +85,81 @@ const adminNavItems = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { user, logout } = useAuth()
+  const { authMode, user, logout } = useAuth()
   const router = useRouter()
+  const [unreadNotifications, setUnreadNotifications] = useState(0)
+
+  useEffect(() => {
+    let isActive = true
+
+    if (authMode !== 'supabase' || !user) {
+      setUnreadNotifications(0)
+      return () => {
+        isActive = false
+      }
+    }
+
+    const loadUnreadNotifications = () => {
+      fetch('/api/notifications?limit=1', {
+        method: 'GET',
+        cache: 'no-store',
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => null)
+
+          if (!response.ok) {
+            throw new Error(
+              payload && typeof payload.error === 'string'
+                ? payload.error
+                : 'No se pudo cargar el contador de notificaciones.'
+            )
+          }
+
+          return payload as { meta?: { unreadCount?: number } }
+        })
+        .then((payload) => {
+          if (isActive) {
+            setUnreadNotifications(payload.meta?.unreadCount ?? 0)
+          }
+        })
+        .catch(() => {
+          if (isActive) {
+            setUnreadNotifications(0)
+          }
+        })
+    }
+
+    loadUnreadNotifications()
+
+    const handleNotificationsUpdated = () => {
+      loadUnreadNotifications()
+    }
+
+    window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated)
+
+    return () => {
+      isActive = false
+      window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, handleNotificationsUpdated)
+    }
+  }, [authMode, user])
 
   if (!user) return null
+
+  const personalStats = selectPersonalStatsAvailability(authMode, user)
+  const deliveryItems = deliveryNavItems
+    .filter((item) => canAccessDashboardPath(user.role, item.href))
+    .map((item) => {
+      if (item.href !== '/dashboard/tasks') {
+        return item
+      }
+
+      const shouldShowTeamTasks = authMode === 'supabase' && user.role !== 'developer'
+
+      return {
+        ...item,
+        title: shouldShowTeamTasks ? 'Tareas del equipo' : item.title,
+      }
+    })
 
   const handleLogout = async () => {
     await logout()
@@ -100,14 +193,21 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname === '/dashboard'}>
-                  <Link href="/dashboard">
-                    <LayoutDashboard className="size-4" />
-                    <span>Dashboard</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {workspaceNavItems.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={pathname === item.href}>
+                    <Link href={item.href}>
+                      <item.icon className="size-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                  {item.href === '/dashboard/notifications' && authMode === 'supabase' && unreadNotifications > 0 ? (
+                    <SidebarMenuBadge>
+                      {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                    </SidebarMenuBadge>
+                  ) : null}
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -134,12 +234,12 @@ export function AppSidebar() {
         )}
 
         {/* Delivery Section */}
-        {canAccessDelivery(user.role) && (
+        {deliveryItems.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel>Delivery</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {deliveryNavItems.map((item) => (
+                {deliveryItems.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={pathname === item.href}>
                       <Link href={item.href}>
@@ -222,13 +322,13 @@ export function AppSidebar() {
             <DropdownMenuItem asChild>
               <Link href="/dashboard/earnings">
                 <DollarSign className="size-4 mr-2" />
-                Balance: ${user.balance.toLocaleString()}
+                {personalStats.sidebarBalanceLabel}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/dashboard/rewards">
                 <Gift className="size-4 mr-2" />
-                Puntos: {user.points.toLocaleString()}
+                {personalStats.sidebarPointsLabel}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

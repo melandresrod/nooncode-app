@@ -5,13 +5,15 @@ import React from "react"
 import { useState, useRef, useEffect } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
+import { useAuth } from '@/lib/auth-context'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { Send, Bot, User, Sparkles, Loader2, X, Maximize2, Minimize2 } from 'lucide-react'
+import { Send, Bot, User, Sparkles, Loader2, X, Maximize2, Minimize2, Info } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 interface MaxwellChatProps {
@@ -22,8 +24,10 @@ interface MaxwellChatProps {
 }
 
 export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: MaxwellChatProps) {
+  const { authMode } = useAuth()
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const isSupabaseMode = authMode === 'supabase'
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({ api: '/api/maxwell' }),
@@ -45,12 +49,19 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
     setInput('')
   }
 
-  const suggestedPrompts = [
-    'Redacta un email de seguimiento',
-    'Dame estrategias de cierre',
-    'Ayudame con una propuesta',
-    'Prioriza mis leads',
-  ]
+  const suggestedPrompts = isSupabaseMode
+    ? [
+        'Ayudame a redactar un email comercial',
+        'Mejora este mensaje para un cliente',
+        'Dame una estructura de propuesta',
+        'Ayudame a preparar una reunion',
+      ]
+    : [
+        'Redacta un email de seguimiento',
+        'Dame estrategias de cierre',
+        'Ayudame con una propuesta',
+        'Prioriza mis leads',
+      ]
 
   return (
     <Card className={cn('flex flex-col bg-card', className)}>
@@ -62,7 +73,11 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
           </div>
           <div>
             <h3 className="font-semibold">Maxwell</h3>
-            <p className="text-xs text-muted-foreground">Tu copiloto de ventas</p>
+            <p className="text-xs text-muted-foreground">
+              {isSupabaseMode
+                ? 'Asistente general sin contexto automatico del workspace'
+                : 'Tu copiloto de ventas'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -82,6 +97,18 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
       {/* Messages */}
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-4">
+          {isSupabaseMode && (
+            <Alert className="border-dashed bg-muted/40">
+              <Info className="size-4" />
+              <AlertTitle>Contexto manual requerido</AlertTitle>
+              <AlertDescription>
+                Maxwell puede ayudarte a redactar y pensar opciones, pero en este runtime no ve
+                automaticamente tus leads, pipeline, reportes o configuraciones reales. Pega el
+                contexto que quieras analizar dentro del chat.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -89,7 +116,9 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
               </div>
               <h4 className="font-semibold mb-2">Hola, soy Maxwell</h4>
               <p className="text-sm text-muted-foreground mb-6 max-w-[280px]">
-                Tu asistente de ventas con IA. Puedo ayudarte a redactar emails, crear propuestas y mas.
+                {isSupabaseMode
+                  ? 'Puedo ayudarte como asistente general para redactar, estructurar ideas y revisar texto si me compartes el contexto necesario.'
+                  : 'Tu asistente de ventas con IA. Puedo ayudarte a redactar emails, crear propuestas y mas.'}
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 {suggestedPrompts.map((prompt) => (
@@ -169,7 +198,7 @@ export function MaxwellChat({ className, onClose, isExpanded, onToggleExpand }: 
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Escribe tu mensaje..."
+            placeholder={isSupabaseMode ? 'Escribe tu mensaje o pega contexto...' : 'Escribe tu mensaje...'}
             disabled={isLoading}
             className="flex-1"
           />

@@ -3,7 +3,11 @@
 import { useMemo } from 'react'
 import { useAuth, canAccessSales, canAccessDelivery, getRoleLabel } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
-import { selectDashboardSummary } from '@/lib/dashboard-selectors'
+import {
+  selectDashboardKpiCopy,
+  selectDashboardSummary,
+  selectPersonalStatsAvailability,
+} from '@/lib/dashboard-selectors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -19,7 +23,7 @@ import {
 import Link from 'next/link'
 
 export default function DashboardPage() {
-  const { user } = useAuth()
+  const { authMode, user } = useAuth()
   const { leads, projectBoardProjects, taskBoardTasks } = useData()
 
   if (!user) return null
@@ -30,6 +34,8 @@ export default function DashboardPage() {
   )
 
   const { sales, delivery } = summary
+  const personalStats = selectPersonalStatsAvailability(authMode, user)
+  const dashboardKpiCopy = selectDashboardKpiCopy(authMode)
 
   return (
     <div className="p-6 space-y-6">
@@ -39,17 +45,19 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-balance">Bienvenido, {user.name.split(' ')[0]}</h1>
           <p className="text-muted-foreground max-w-2xl">
             <Badge variant="outline" className="mr-2">{getRoleLabel(user.role)}</Badge>
-            Aqui esta el resumen de hoy
+            {dashboardKpiCopy.headerSummaryLabel}
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3 md:min-w-[260px]">
           <div className="rounded-xl border bg-card px-4 py-3 text-right shadow-sm">
             <p className="text-sm text-muted-foreground">Tu balance</p>
-            <p className="text-xl font-bold text-primary">${user.balance.toLocaleString()}</p>
+            <p className="text-xl font-bold text-primary">{personalStats.balanceValueLabel}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{personalStats.balanceDescription}</p>
           </div>
           <div className="rounded-xl border bg-card px-4 py-3 text-right shadow-sm">
             <p className="text-sm text-muted-foreground">Puntos</p>
-            <p className="text-xl font-bold text-accent">{user.points.toLocaleString()}</p>
+            <p className="text-xl font-bold text-accent">{personalStats.pointsValueLabel}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{personalStats.pointsDescription}</p>
           </div>
         </div>
       </div>
@@ -70,8 +78,10 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{sales.openLeads}</div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <ArrowUpRight className="size-3 text-success" />
-                  <span className="text-success">+12%</span> vs mes anterior
+                  {authMode === 'mock' && <ArrowUpRight className="size-3 text-success" />}
+                  <span className={authMode === 'mock' ? 'text-success' : undefined}>
+                    {dashboardKpiCopy.salesOpenLeadsNote}
+                  </span>
                 </p>
               </CardContent>
             </Card>
@@ -92,19 +102,21 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sales.wonLeads}</div>
-                <p className="text-xs text-muted-foreground">Este mes</p>
+                <p className="text-xs text-muted-foreground">{dashboardKpiCopy.salesWonLeadsNote}</p>
               </CardContent>
             </Card>
             <Card className="gap-4">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Revenue total</CardTitle>
+                <CardTitle className="text-sm font-medium">{dashboardKpiCopy.salesRevenueTitle}</CardTitle>
                 <DollarSign className="size-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">${sales.totalRevenue.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <ArrowUpRight className="size-3 text-success" />
-                  <span className="text-success">+23%</span> vs mes anterior
+                  {authMode === 'mock' && <ArrowUpRight className="size-3 text-success" />}
+                  <span className={authMode === 'mock' ? 'text-success' : undefined}>
+                    {dashboardKpiCopy.salesRevenueNote}
+                  </span>
                 </p>
               </CardContent>
             </Card>
@@ -157,7 +169,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{delivery.completedProjects}</div>
-                <p className="text-xs text-muted-foreground">Este mes</p>
+                <p className="text-xs text-muted-foreground">{dashboardKpiCopy.deliveryCompletedProjectsNote}</p>
               </CardContent>
             </Card>
           </div>

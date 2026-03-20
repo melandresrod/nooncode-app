@@ -85,10 +85,11 @@ function buildGmailComposeUrl(email: string): string {
 }
 
 export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardProps) {
-  const { user } = useAuth()
+  const { authMode, user } = useAuth()
   const statusInfo = statusConfig[lead.status]
   const assignmentInfo = assignmentStatusConfig[lead.assignmentStatus]
   const next = nextStatus[lead.status]
+  const isSupabaseMode = authMode === 'supabase'
   const hasValidEmail = isValidLeadEmail(lead.email)
   const followUpState = getLeadFollowUpState(lead.nextFollowUpAt)
   const isReleasedLeadPendingClaim =
@@ -115,6 +116,11 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
     }
 
     window.open(buildGmailComposeUrl(lead.email), '_blank', 'noopener,noreferrer')
+  }
+
+  const handleOpenLeadDetail = (event?: Event | React.MouseEvent) => {
+    event?.stopPropagation()
+    onClick()
   }
 
   return (
@@ -229,18 +235,37 @@ export function LeadCard({ lead, onClick, onStatusChange, onDelete }: LeadCardPr
                 <MessageSquare className="size-4 mr-2" />
                 Abrir en Gmail
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Phone className="size-4 mr-2" />
-                Llamar
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <FileText className="size-4 mr-2" />
-                Generar propuesta
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Calendar className="size-4 mr-2" />
-                Agendar reunion
-              </DropdownMenuItem>
+              {isSupabaseMode ? (
+                <>
+                  <DropdownMenuItem disabled>
+                    <Phone className="size-4 mr-2" />
+                    Llamar no disponible
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={(event) => handleOpenLeadDetail(event)}>
+                    <FileText className="size-4 mr-2" />
+                    Abrir detalle para propuesta
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={(event) => handleOpenLeadDetail(event)}>
+                    <Calendar className="size-4 mr-2" />
+                    Abrir detalle para seguimiento
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem>
+                    <Phone className="size-4 mr-2" />
+                    Llamar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <FileText className="size-4 mr-2" />
+                    Generar propuesta
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Calendar className="size-4 mr-2" />
+                    Agendar reunion
+                  </DropdownMenuItem>
+                </>
+              )}
               {onDelete && (
                 <>
                   <DropdownMenuSeparator />

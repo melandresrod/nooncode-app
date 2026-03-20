@@ -17,7 +17,7 @@ const routeParamsSchema = z.object({
   projectId: z.string().uuid(),
 })
 
-const allowedProjectUpdateRoles = ['admin', 'sales_manager', 'pm'] as const
+const allowedProjectUpdateRoles = ['admin', 'pm'] as const
 
 function projectNotFoundResponse() {
   return NextResponse.json(

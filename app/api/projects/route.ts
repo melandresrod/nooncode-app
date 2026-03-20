@@ -5,7 +5,7 @@ import { toErrorResponse } from '@/lib/server/api/errors'
 import { mapProjectRowToWire } from '@/lib/server/projects/mappers'
 import { listProjects } from '@/lib/server/projects/repository'
 
-const allowedProjectListRoles = ['admin', 'pm', 'developer'] as const
+const allowedProjectListRoles = ['admin', 'sales_manager', 'pm', 'developer'] as const
 
 export async function GET() {
   try {

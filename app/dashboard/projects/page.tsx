@@ -1,7 +1,14 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useAuth, canManageTeam } from '@/lib/auth-context'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { canAccessDashboardPath, useAuth } from '@/lib/auth-context'
+import {
+  buildLeadDetailHref,
+  buildProjectDetailHref,
+  clearDashboardEntityHref,
+} from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
 import type { DeliveryUser, Project, ProjectStatus, ProjectTaskActivity, Task } from '@/lib/types'
 import { calculateProjectProgress, deriveProjectDisplayStatus } from '@/lib/projects/progress'
@@ -15,6 +22,16 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -23,17 +40,22 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import { formatProjectActivityBody, formatProjectActivityTitle } from '@/lib/projects/activity-copy'
+import { formatTaskActivityBody, formatTaskActivityTitle } from '@/lib/tasks/activity-copy'
 import { toast } from 'sonner'
 import {
+  Blocks,
   FolderKanban,
   Clock,
   AlertTriangle,
+  Eye,
   Users,
   Calendar,
   DollarSign,
   MessageSquareText,
   Plus,
   ArrowRight,
+  Loader2,
 } from 'lucide-react'
 
 const projectStages: { status: ProjectStatus; label: string; color: string }[] = [
@@ -64,32 +86,107 @@ function getProjectPmName(project: Project, deliveryUsers: DeliveryUser[]) {
   return deliveryUsers.find((user) => user.id === project.pmId)?.name
 }
 
+function formatCompactId(value: string | undefined): string {
+  if (!value) {
+    return '-'
+  }
+
+  if (value.length <= 12) {
+    return value
+  }
+
+  return `${value.slice(0, 8)}...${value.slice(-4)}`
+}
+
+function formatProjectSummaryDate(value?: Date): string {
+  return value ? value.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }) : 'Sin fecha visible'
+}
+
+function formatTeamSummaryLabel(teamMembers: DeliveryUser[]): string {
+  if (teamMembers.length === 0) {
+    return 'Sin equipo asignado'
+  }
+
+  if (teamMembers.length <= 3) {
+    return teamMembers.map((member) => member.name).join(', ')
+  }
+
+  return `${teamMembers.slice(0, 3).map((member) => member.name).join(', ')} +${teamMembers.length - 3}`
+}
+
+function formatPrototypeWorkspaceStatus(status: Project['prototypeWorkspaceStatus']): string {
+  if (status === 'pending_generation') {
+    return 'Pendiente de generacion'
+  }
+
+  if (status === 'ready') {
+    return 'Listo'
+  }
+
+  if (status === 'delivery_active') {
+    return 'Activo en delivery'
+  }
+
+  return 'Archivado'
+}
+
+function formatPrototypeWorkspaceStage(stage: Project['prototypeWorkspaceStage']): string {
+  return stage === 'sales' ? 'Etapa comercial' : 'Etapa delivery'
+}
+
 export default function ProjectsPage() {
-  const { user } = useAuth()
+  const { user, authMode } = useAuth()
   const {
     projectBoardProjects,
     deliveryUsers,
     getTasksByProject,
     getProjectActivity,
     updateProjectStatus,
+    refreshProjects,
   } = useData()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban')
+  const requestedProjectId = searchParams.get('projectId')
 
   if (!user) return null
 
-  const canManageProjects = canManageTeam(user.role)
+  const canManageProjects = ['admin', 'pm'].includes(user.role)
+  const canViewProjectTasks = canAccessDashboardPath(user.role, '/dashboard/tasks')
+  const canViewProjectActivity = canManageProjects || user.role === 'sales_manager'
+  const canOpenLeadRoute = canAccessDashboardPath(user.role, '/dashboard/leads')
   const visibleProjects = projectBoardProjects
+  const replaceProjectHref = (projectId: string | null) => {
+    const nextHref = projectId
+      ? buildProjectDetailHref(projectId, searchParams)
+      : clearDashboardEntityHref(pathname, searchParams, 'projectId')
+
+    router.replace(nextHref, { scroll: false })
+  }
+
+  const getVisibleProjectTasks = (projectId: string) => (
+    canViewProjectTasks ? getTasksByProject(projectId) : []
+  )
+
+  const getProjectDisplayStatus = (project: Project) => {
+    const tasks = getVisibleProjectTasks(project.id)
+    return canViewProjectTasks
+      ? deriveProjectDisplayStatus(project.status, tasks)
+      : project.status
+  }
 
   const getProjectsByStatus = (status: ProjectStatus) => {
-    return visibleProjects.filter((project) => {
-      const tasks = getTasksByProject(project.id)
-      return deriveProjectDisplayStatus(project.status, tasks) === status
-    })
+    return visibleProjects.filter((project) => getProjectDisplayStatus(project) === status)
   }
 
   const getProjectProgress = (projectId: string) => {
-    return calculateProjectProgress(getTasksByProject(projectId))
+    if (!canViewProjectTasks) {
+      return null
+    }
+
+    return calculateProjectProgress(getVisibleProjectTasks(projectId))
   }
 
   const handleStatusChange = async (projectId: string, newStatus: ProjectStatus) => {
@@ -106,26 +203,90 @@ export default function ProjectsPage() {
     [visibleProjects, selectedProjectId]
   )
 
+  useEffect(() => {
+    if (!requestedProjectId) {
+      return
+    }
+
+    if (selectedProjectId === requestedProjectId) {
+      return
+    }
+
+    const requestedProject = visibleProjects.find((project) => project.id === requestedProjectId) ?? null
+
+    if (!requestedProject) {
+      if (visibleProjects.length > 0) {
+        replaceProjectHref(null)
+      }
+      return
+    }
+
+    setSelectedProjectId(requestedProject.id)
+  }, [requestedProjectId, selectedProjectId, visibleProjects])
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      return
+    }
+
+    const hasSelectedProject = visibleProjects.some((project) => project.id === selectedProjectId)
+
+    if (!hasSelectedProject) {
+      setSelectedProjectId(null)
+
+      if (requestedProjectId === selectedProjectId) {
+        replaceProjectHref(null)
+      }
+    }
+  }, [requestedProjectId, selectedProjectId, visibleProjects])
+
   // Stats
   const totalProjects = visibleProjects.length
-  const activeProjects = visibleProjects.filter((project) => {
-    const tasks = getTasksByProject(project.id)
-    return deriveProjectDisplayStatus(project.status, tasks) === 'in_progress'
-  }).length
-  const inReview = visibleProjects.filter((project) => {
-    const tasks = getTasksByProject(project.id)
-    return deriveProjectDisplayStatus(project.status, tasks) === 'review'
-  }).length
+  const activeProjects = visibleProjects.filter((project) => getProjectDisplayStatus(project) === 'in_progress').length
+  const inReview = visibleProjects.filter((project) => getProjectDisplayStatus(project) === 'review').length
   const totalBudget = visibleProjects.reduce((sum, p) => sum + p.budget, 0)
+  const pageDescription = canManageProjects
+    ? 'Gestiona todos los proyectos del equipo'
+    : user.role === 'sales_manager'
+      ? 'Consulta el estado y el hand-off de los proyectos visibles sin acciones de edicion.'
+      : 'Proyectos donde colaboras'
+
+  const handleOpenProject = (projectId: string) => {
+    setSelectedProjectId(projectId)
+
+    if (requestedProjectId !== projectId) {
+      replaceProjectHref(projectId)
+    }
+  }
+
+  const handleProjectDialogChange = (open: boolean) => {
+    if (open) {
+      return
+    }
+
+    setSelectedProjectId(null)
+
+    if (requestedProjectId) {
+      replaceProjectHref(null)
+    }
+  }
 
   return (
     <div className="p-6 space-y-6 h-full flex flex-col">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-balance">Proyectos</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold text-balance">Proyectos</h1>
+            {!canManageProjects ? (
+              <Badge variant="outline" className="gap-1">
+                <Eye className="size-3.5" />
+                Solo lectura
+              </Badge>
+            ) : null}
+          </div>
           <p className="text-muted-foreground max-w-2xl">
-            {canManageProjects ? 'Gestiona todos los proyectos del equipo' : 'Proyectos donde colaboras'}
+            {pageDescription}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -135,7 +296,7 @@ export default function ProjectsPage() {
               <TabsTrigger value="list">Lista</TabsTrigger>
             </TabsList>
           </Tabs>
-          {canManageProjects && (
+          {canManageProjects && authMode === 'mock' && (
             <Button variant="outline" disabled>
               <Plus className="size-4 mr-2" />
               Nuevo Proyecto desde Hand-off
@@ -211,9 +372,10 @@ export default function ProjectsPage() {
                             project={project}
                             deliveryUsers={deliveryUsers}
                             progress={getProjectProgress(project.id)}
-                            taskCount={getTasksByProject(project.id).length}
+                            taskCount={canViewProjectTasks ? getVisibleProjectTasks(project.id).length : null}
                             pmName={getProjectPmName(project, deliveryUsers)}
-                            onClick={() => setSelectedProjectId(project.id)}
+                            canViewProjectTasks={canViewProjectTasks}
+                            onClick={() => handleOpenProject(project.id)}
                           />
                         ))}
                         {stageProjects.length === 0 && (
@@ -264,7 +426,7 @@ export default function ProjectsPage() {
               <Card
                 key={project.id}
                 className="p-4 cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => setSelectedProjectId(project.id)}
+                onClick={() => handleOpenProject(project.id)}
               >
                 <div className="flex items-center gap-4">
                   <div className="flex-1 min-w-0">
@@ -272,9 +434,9 @@ export default function ProjectsPage() {
                       <h3 className="font-semibold truncate">{project.name}</h3>
                       <Badge
                         variant="outline"
-                        className={statusConfig[deriveProjectDisplayStatus(project.status, getTasksByProject(project.id))].color}
+                        className={statusConfig[getProjectDisplayStatus(project)].color}
                       >
-                        {statusConfig[deriveProjectDisplayStatus(project.status, getTasksByProject(project.id))].label}
+                        {statusConfig[getProjectDisplayStatus(project)].label}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground truncate">{project.clientName}</p>
@@ -284,13 +446,20 @@ export default function ProjectsPage() {
                       <p className="text-sm font-medium">${project.budget.toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground">Presupuesto</p>
                     </div>
-                    <div className="w-24">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span>Progreso</span>
-                        <span>{getProjectProgress(project.id)}%</span>
+                    {canViewProjectTasks ? (
+                      <div className="w-24">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span>Progreso</span>
+                          <span>{getProjectProgress(project.id)}%</span>
+                        </div>
+                        <Progress value={getProjectProgress(project.id) ?? 0} className="h-2" />
                       </div>
-                      <Progress value={getProjectProgress(project.id)} className="h-2" />
-                    </div>
+                    ) : (
+                      <div className="text-right">
+                        <p className="text-xs font-medium text-muted-foreground">Solo lectura</p>
+                        <p className="text-[11px] text-muted-foreground">Sin desglose de tareas</p>
+                      </div>
+                    )}
                     <ArrowRight className="size-4 text-muted-foreground" />
                   </div>
                 </div>
@@ -301,7 +470,7 @@ export default function ProjectsPage() {
       )}
 
       {/* Project Detail Dialog */}
-      <Dialog open={!!selectedProject} onOpenChange={() => setSelectedProjectId(null)}>
+      <Dialog open={!!selectedProject} onOpenChange={handleProjectDialogChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle del Proyecto</DialogTitle>
@@ -312,11 +481,16 @@ export default function ProjectsPage() {
           {selectedProject && (
             <ProjectDetail
               project={selectedProject}
-              tasks={getTasksByProject(selectedProject.id)}
+              tasks={getVisibleProjectTasks(selectedProject.id)}
               deliveryUsers={deliveryUsers}
               getProjectActivity={getProjectActivity}
               onStatusChange={handleStatusChange}
+              refreshProjects={refreshProjects}
               canManageProjects={canManageProjects}
+              canViewProjectTasks={canViewProjectTasks}
+              canViewProjectActivity={canViewProjectActivity}
+              canOpenLeadRoute={canOpenLeadRoute}
+              authMode={authMode}
             />
           )}
         </DialogContent>
@@ -328,13 +502,22 @@ export default function ProjectsPage() {
 interface ProjectCardProps {
   project: Project
   deliveryUsers: DeliveryUser[]
-  progress: number
-  taskCount: number
+  progress: number | null
+  taskCount: number | null
   pmName?: string
+  canViewProjectTasks: boolean
   onClick: () => void
 }
 
-function ProjectCard({ project, deliveryUsers, progress, taskCount, pmName, onClick }: ProjectCardProps) {
+function ProjectCard({
+  project,
+  deliveryUsers,
+  progress,
+  taskCount,
+  pmName,
+  canViewProjectTasks,
+  onClick,
+}: ProjectCardProps) {
   const teamMembers = project.teamIds
     .map((id) => deliveryUsers.find((user) => user.id === id))
     .filter((member): member is DeliveryUser => Boolean(member))
@@ -365,11 +548,19 @@ function ProjectCard({ project, deliveryUsers, progress, taskCount, pmName, onCl
           </div>
 
           <div>
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="text-muted-foreground">{taskCount} tareas</span>
-              <span>{progress}%</span>
-            </div>
-            <Progress value={progress} className="h-1.5" />
+            {canViewProjectTasks ? (
+              <>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-muted-foreground">{taskCount ?? 0} tareas</span>
+                  <span>{progress ?? 0}%</span>
+                </div>
+                <Progress value={progress ?? 0} className="h-1.5" />
+              </>
+            ) : (
+              <div className="rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground">
+                Tareas visibles solo para delivery.
+              </div>
+            )}
           </div>
 
           {(teamMembers.length > 0 || pmName) && (
@@ -405,7 +596,12 @@ interface ProjectDetailProps {
   deliveryUsers: DeliveryUser[]
   getProjectActivity: (projectId: string) => Promise<ProjectTaskActivity[]>
   onStatusChange: (projectId: string, newStatus: ProjectStatus) => Promise<void>
+  refreshProjects: () => Promise<void>
   canManageProjects: boolean
+  canViewProjectTasks: boolean
+  canViewProjectActivity: boolean
+  canOpenLeadRoute: boolean
+  authMode: 'mock' | 'supabase'
 }
 
 function ProjectDetail({
@@ -414,16 +610,67 @@ function ProjectDetail({
   deliveryUsers,
   getProjectActivity,
   onStatusChange,
+  refreshProjects,
   canManageProjects,
+  canViewProjectTasks,
+  canViewProjectActivity,
+  canOpenLeadRoute,
+  authMode,
 }: ProjectDetailProps) {
   const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isPrototypeHandoffConfirmOpen, setIsPrototypeHandoffConfirmOpen] = useState(false)
+  const [isHandingOffPrototype, setIsHandingOffPrototype] = useState(false)
   const completedTasks = tasks.filter((t) => t.status === 'done').length
-  const progress = calculateProjectProgress(tasks)
-  const displayStatus = deriveProjectDisplayStatus(project.status, tasks)
+  const progress = canViewProjectTasks ? calculateProjectProgress(tasks) : null
+  const displayStatus = canViewProjectTasks
+    ? deriveProjectDisplayStatus(project.status, tasks)
+    : project.status
   const teamMembers = project.teamIds
     .map((id) => deliveryUsers.find((user) => user.id === id))
     .filter((member): member is DeliveryUser => Boolean(member))
   const pmName = getProjectPmName(project, deliveryUsers)
+  const isCommercialReadOnly = !canManageProjects && !canViewProjectTasks
+  const canViewPrototypeWorkspace = canManageProjects || canViewProjectTasks
+  const canTriggerPrototypeHandoff = authMode === 'supabase'
+    && canManageProjects
+    && project.prototypeWorkspaceId
+    && project.prototypeWorkspaceStage === 'sales'
+    && project.prototypeWorkspaceStatus === 'pending_generation'
+
+  const handleConfirmPrototypeHandoff = async () => {
+    if (!project.prototypeWorkspaceId) {
+      return
+    }
+
+    setIsHandingOffPrototype(true)
+
+    try {
+      const response = await fetch(`/api/prototypes/${project.prototypeWorkspaceId}/handoff`, {
+        method: 'POST',
+      })
+      const payload = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        const message =
+          payload && typeof payload.error === 'string'
+            ? payload.error
+            : 'No se pudo tomar el workspace en delivery.'
+        throw new Error(message)
+      }
+
+      await refreshProjects()
+      setIsPrototypeHandoffConfirmOpen(false)
+      toast.success('Workspace marcado en etapa delivery.')
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo tomar el workspace en delivery.'
+      )
+    } finally {
+      setIsHandingOffPrototype(false)
+    }
+  }
 
   const tasksByStatus = {
     todo: tasks.filter((t) => t.status === 'todo'),
@@ -453,11 +700,17 @@ function ProjectDetail({
         </div>
         <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-xs text-muted-foreground">Progreso</p>
-          <p className="text-lg font-bold">{progress}%</p>
+          <p className="text-lg font-bold">{canViewProjectTasks ? `${progress}%` : '-'}</p>
+          {!canViewProjectTasks ? (
+            <p className="text-[11px] text-muted-foreground">Visible solo para delivery.</p>
+          ) : null}
         </div>
         <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-xs text-muted-foreground">Tareas</p>
-          <p className="text-lg font-bold">{completedTasks}/{tasks.length}</p>
+          <p className="text-lg font-bold">{canViewProjectTasks ? `${completedTasks}/${tasks.length}` : '-'}</p>
+          {!canViewProjectTasks ? (
+            <p className="text-[11px] text-muted-foreground">Desglose reservado a delivery.</p>
+          ) : null}
         </div>
         <div className="p-3 bg-muted/50 rounded-lg">
           <p className="text-xs text-muted-foreground">Fecha inicio</p>
@@ -480,14 +733,151 @@ function ProjectDetail({
         </div>
       )}
 
-      {/* Progress Bar */}
-      <div>
-        <div className="flex items-center justify-between text-sm mb-2">
-          <span>Progreso general</span>
-          <span className="font-medium">{progress}%</span>
+      {(project.sourceLeadId || project.sourceProposalId) && (
+        <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Origen comercial</p>
+              <p className="text-xs text-muted-foreground">
+                Lineage read-only del hand-off comercial que origino este proyecto.
+              </p>
+            </div>
+            {project.sourceLeadId && canOpenLeadRoute ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href={buildLeadDetailHref(project.sourceLeadId)}>Ir a leads</Link>
+              </Button>
+            ) : null}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Lead origen</p>
+              <p className="text-sm font-medium">
+                {project.sourceLeadName ?? (project.sourceLeadId ? 'Lead comercial vinculado' : 'Sin lead')}
+              </p>
+              {project.sourceLeadId ? (
+                <p className="text-xs text-muted-foreground">
+                  Ref. {formatCompactId(project.sourceLeadId)}
+                </p>
+              ) : null}
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Propuesta origen</p>
+              <p className="text-sm font-medium">
+                {project.sourceProposalTitle ?? (project.sourceProposalId ? 'Propuesta comercial vinculada' : 'Sin propuesta')}
+              </p>
+              {project.sourceProposalId ? (
+                <p className="text-xs text-muted-foreground">
+                  Ref. {formatCompactId(project.sourceProposalId)}
+                </p>
+              ) : null}
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Hand-off</p>
+              <p className="text-sm font-medium">
+                {project.handoffReadyAt
+                  ? project.handoffReadyAt.toLocaleString('es-MX')
+                  : 'Sin marca visible'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {canViewProjectTasks
+                  ? `${tasks.length} tareas visibles en delivery`
+                  : 'Desglose de tareas visible solo para delivery'}
+              </p>
+            </div>
+          </div>
         </div>
-        <Progress value={progress} className="h-3" />
-      </div>
+      )}
+
+      {canViewPrototypeWorkspace && project.prototypeWorkspaceId ? (
+        <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+          <div>
+            <p className="text-sm font-medium">Workspace de prototipo</p>
+            <p className="text-xs text-muted-foreground">
+              Referencia read-only del workspace comercial vinculado a este proyecto. La continuacion real todavia no esta conectada a IA o `v0`.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Estado actual</p>
+              <p className="text-sm font-medium">
+                {formatPrototypeWorkspaceStatus(project.prototypeWorkspaceStatus)}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Etapa</p>
+              <p className="text-sm font-medium">
+                {formatPrototypeWorkspaceStage(project.prototypeWorkspaceStage)}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Solicitado por</p>
+              <p className="text-sm font-medium">
+                {project.prototypeRequestedByName ?? 'Usuario no visible'}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Creado en</p>
+              <p className="text-sm font-medium">
+                {project.prototypeCreatedAt
+                  ? project.prototypeCreatedAt.toLocaleString('es-MX')
+                  : 'Sin marca visible'}
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg border bg-background p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Blocks className="size-4 text-primary" />
+              Handoff del prototipo
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Este proyecto heredo un workspace solicitado desde ventas. Hoy solo existe la trazabilidad del workspace; la continuacion real del prototipo sigue pendiente de integracion.
+            </p>
+            {canTriggerPrototypeHandoff ? (
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsPrototypeHandoffConfirmOpen(true)}
+                  disabled={isHandingOffPrototype}
+                >
+                  {isHandingOffPrototype ? (
+                    <>
+                      <Loader2 className="size-4 mr-2 animate-spin" />
+                      Tomando en delivery...
+                    </>
+                  ) : (
+                    'Tomar en delivery'
+                  )}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {isCommercialReadOnly ? (
+        <CommercialProjectSummary
+          project={project}
+          pmName={pmName}
+          teamMembers={teamMembers}
+          getProjectActivity={getProjectActivity}
+        />
+      ) : null}
+
+      {/* Progress Bar */}
+      {canViewProjectTasks ? (
+        <div>
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span>Progreso general</span>
+            <span className="font-medium">{progress}%</span>
+          </div>
+          <Progress value={progress ?? 0} className="h-3" />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm text-muted-foreground">
+          El progreso y el desglose de tareas visibles se mantienen solo para roles de delivery.
+        </div>
+      )}
 
       {/* Team */}
       <div>
@@ -525,25 +915,26 @@ function ProjectDetail({
         </div>
       </div>
 
-      {/* Tasks by Status */}
-      <div>
-        <h3 className="text-sm font-medium mb-3">Tareas</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { key: 'todo', label: 'Por hacer', color: 'border-slate-300' },
-            { key: 'in_progress', label: 'En progreso', color: 'border-blue-400' },
-            { key: 'review', label: 'Revision', color: 'border-yellow-400' },
-            { key: 'done', label: 'Completadas', color: 'border-green-400' },
-          ].map(({ key, label, color }) => (
-            <div key={key} className={cn('p-3 rounded-lg border-l-4', color, 'bg-muted/30')}>
-              <p className="text-xs text-muted-foreground mb-1">{label}</p>
-              <p className="text-xl font-bold">{tasksByStatus[key as keyof typeof tasksByStatus].length}</p>
-            </div>
-          ))}
+      {canViewProjectTasks ? (
+        <div>
+          <h3 className="text-sm font-medium mb-3">Tareas</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { key: 'todo', label: 'Por hacer', color: 'border-slate-300' },
+              { key: 'in_progress', label: 'En progreso', color: 'border-blue-400' },
+              { key: 'review', label: 'Revision', color: 'border-yellow-400' },
+              { key: 'done', label: 'Completadas', color: 'border-green-400' },
+            ].map(({ key, label, color }) => (
+              <div key={key} className={cn('p-3 rounded-lg border-l-4', color, 'bg-muted/30')}>
+                <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                <p className="text-xl font-bold">{tasksByStatus[key as keyof typeof tasksByStatus].length}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {canManageProjects && (
+      {canViewProjectActivity && (
         <ProjectActivityTimeline
           projectId={project.id}
           getProjectActivity={getProjectActivity}
@@ -580,7 +971,7 @@ function ProjectDetail({
               )}
             </>
           )}
-          <Button variant="outline">Ver Tareas Detalle</Button>
+          {authMode === 'mock' && <Button variant="outline">Ver Tareas Detalle</Button>}
         </div>
       )}
 
@@ -589,6 +980,30 @@ function ProjectDetail({
         onOpenChange={setIsEditOpen}
         editProject={project}
       />
+
+      <AlertDialog open={isPrototypeHandoffConfirmOpen} onOpenChange={setIsPrototypeHandoffConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tomar workspace en delivery</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion marca que el workspace ya paso a manos de delivery. La continuacion real del prototipo sigue pendiente de integracion con IA o `v0`.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isHandingOffPrototype}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={isHandingOffPrototype} onClick={handleConfirmPrototypeHandoff}>
+              {isHandingOffPrototype ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  Confirmando handoff...
+                </>
+              ) : (
+                'Confirmar handoff'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -687,7 +1102,7 @@ function ProjectActivityTimeline({
               </EmptyMedia>
               <EmptyTitle>Aun no hay actividad</EmptyTitle>
               <EmptyDescription>
-                Las notas de avance de las tareas de este proyecto apareceran aqui.
+                La actividad visible de las tareas de este proyecto aparecera aqui.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -698,18 +1113,147 @@ function ProjectActivityTimeline({
             <div key={activity.id} className="rounded-lg border bg-muted/20 p-4 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium">{activity.taskTitle}</p>
+                  <p className="text-sm font-medium">
+                    {activity.sourceKind === 'task_activity'
+                      ? activity.taskTitle ?? 'Tarea sin titulo'
+                      : 'Proyecto'}
+                  </p>
                   <p className="text-xs text-muted-foreground">{activity.actorName}</p>
                 </div>
                 <span className="text-xs text-muted-foreground">
                   {activity.createdAt.toLocaleString('es-MX')}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground">{activity.noteBody ?? ''}</p>
+              <p className="text-sm font-medium">
+                {activity.sourceKind === 'task_activity'
+                  ? formatTaskActivityTitle(activity)
+                  : formatProjectActivityTitle(activity)}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {activity.sourceKind === 'task_activity'
+                  ? formatTaskActivityBody(activity)
+                  : formatProjectActivityBody(activity)}
+              </p>
             </div>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+interface CommercialProjectSummaryProps {
+  project: Project
+  pmName?: string
+  teamMembers: DeliveryUser[]
+  getProjectActivity: (projectId: string) => Promise<ProjectTaskActivity[]>
+}
+
+function CommercialProjectSummary({
+  project,
+  pmName,
+  teamMembers,
+  getProjectActivity,
+}: CommercialProjectSummaryProps) {
+  const [lastProjectActivity, setLastProjectActivity] = useState<ProjectTaskActivity | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [reloadCount, setReloadCount] = useState(0)
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadActivity = async () => {
+      setIsLoading(true)
+      setErrorMessage(null)
+
+      try {
+        const activities = await getProjectActivity(project.id)
+
+        if (!isActive) {
+          return
+        }
+
+        const latestProjectOnlyActivity = activities.find((activity) => activity.sourceKind === 'project_activity') ?? null
+        setLastProjectActivity(latestProjectOnlyActivity)
+      } catch (error) {
+        if (!isActive) {
+          return
+        }
+
+        setLastProjectActivity(null)
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : 'No se pudo cargar el ultimo movimiento visible del proyecto.'
+        )
+      } finally {
+        if (isActive) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadActivity()
+
+    return () => {
+      isActive = false
+    }
+  }, [getProjectActivity, project.id, reloadCount])
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4 space-y-4">
+      <div>
+        <p className="text-sm font-medium">Resumen para seguimiento comercial</p>
+        <p className="text-xs text-muted-foreground">
+          Vista read-only del estado actual del proyecto sin desglose operativo de tareas.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Estado actual</p>
+          <p className="text-sm font-medium">{statusConfig[project.status].label}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">PM asignado</p>
+          <p className="text-sm font-medium">{pmName ?? 'Sin PM asignado'}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Equipo asignado</p>
+          <p className="text-sm font-medium">{formatTeamSummaryLabel(teamMembers)}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <p className="text-xs text-muted-foreground">Calendario visible</p>
+          <p className="text-sm font-medium">
+            {formatProjectSummaryDate(project.startDate)} - {formatProjectSummaryDate(project.endDate)}
+          </p>
+        </div>
+        <div className="rounded-lg border bg-background p-3 md:col-span-2">
+          <p className="text-xs text-muted-foreground">Ultimo movimiento visible</p>
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Cargando movimiento...</p>
+          ) : errorMessage ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-destructive">No se pudo cargar el movimiento visible.</p>
+              <p className="text-sm text-muted-foreground">{errorMessage}</p>
+              <Button variant="outline" size="sm" onClick={() => setReloadCount((count) => count + 1)}>
+                Reintentar
+              </Button>
+            </div>
+          ) : lastProjectActivity && lastProjectActivity.sourceKind === 'project_activity' ? (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">{formatProjectActivityTitle(lastProjectActivity)}</p>
+              <p className="text-sm text-muted-foreground">{formatProjectActivityBody(lastProjectActivity)}</p>
+              <p className="text-xs text-muted-foreground">
+                {lastProjectActivity.actorName} - {lastProjectActivity.createdAt.toLocaleString('es-MX')}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Aun no hay movimiento visible del proyecto.</p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

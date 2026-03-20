@@ -5,11 +5,38 @@ import type {
 } from '@/lib/server/leads/proposal-schema'
 import type {
   LeadProposalInsert,
-  LeadProposalRow,
+  LeadProposalRowWithLinkedProject,
   LeadProposalUpdate,
 } from '@/lib/server/leads/proposal-types'
+import type { ProjectRowWithLineage } from '@/lib/server/projects/types'
 
-export function mapLeadProposalRowToWire(row: LeadProposalRow): LeadProposalWire {
+type EmbeddedLinkedProjectRow = NonNullable<LeadProposalRowWithLinkedProject['linked_project']>[number]
+export interface LeadProposalLinkedProjectSource {
+  id: string
+  name: string
+  status: ProjectRowWithLineage['status']
+  created_at: string
+}
+
+function mapLinkedProjectToWire(project: LeadProposalLinkedProjectSource | EmbeddedLinkedProjectRow | null) {
+  if (!project) {
+    return null
+  }
+
+  return {
+    id: project.id,
+    name: project.name,
+    status: project.status,
+    createdAt: project.created_at,
+  }
+}
+
+export function mapLeadProposalRowToWire(
+  row: LeadProposalRowWithLinkedProject,
+  linkedProjectOverride: LeadProposalLinkedProjectSource | null = null
+): LeadProposalWire {
+  const linkedProject = linkedProjectOverride ?? row.linked_project?.[0] ?? null
+
   return {
     id: row.id,
     leadId: row.lead_id,
@@ -23,6 +50,7 @@ export function mapLeadProposalRowToWire(row: LeadProposalRow): LeadProposalWire
     sentAt: row.sent_at,
     acceptedAt: row.accepted_at,
     handoffReadyAt: row.handoff_ready_at,
+    linkedProject: mapLinkedProjectToWire(linkedProject),
   }
 }
 

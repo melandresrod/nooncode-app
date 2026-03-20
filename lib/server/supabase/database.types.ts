@@ -22,9 +22,21 @@ export type LeadActivityType =
   | 'claimed'
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'handoff_ready'
 export type ProjectStatus = 'backlog' | 'in_progress' | 'review' | 'delivered' | 'completed'
+export type ProjectActivityType = 'status_changed' | 'pm_changed' | 'team_changed' | 'schedule_changed'
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
-export type TaskActivityType = 'note_added'
+export type TaskActivityType = 'note_added' | 'status_changed' | 'actual_hours_updated'
+export type UserNotificationSourceKind = 'lead_activity' | 'task_activity' | 'project_activity'
+export type UserNotificationDomain = 'sales' | 'delivery'
+export type WalletEntryType =
+  | 'free_grant'
+  | 'earnings_credit'
+  | 'manual_adjustment'
+  | 'prototype_request_debit'
+  | 'prototype_continue_debit'
+export type WalletBucket = 'free' | 'earned'
+export type PrototypeStage = 'sales' | 'delivery'
+export type PrototypeWorkspaceStatus = 'pending_generation' | 'ready' | 'delivery_active' | 'archived'
 
 export interface Database {
   public: {
@@ -342,6 +354,46 @@ export interface Database {
           }
         ]
       }
+      project_activities: {
+        Row: {
+          id: string
+          project_id: string
+          activity_type: ProjectActivityType
+          actor_profile_id: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          activity_type: ProjectActivityType
+          actor_profile_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          activity_type?: ProjectActivityType
+          actor_profile_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'project_activities_actor_profile_id_fkey'
+            columns: ['actor_profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'project_activities_project_id_fkey'
+            columns: ['project_id']
+            referencedRelation: 'projects'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       tasks: {
         Row: {
           id: string
@@ -452,14 +504,280 @@ export interface Database {
           }
         ]
       }
+      user_notifications: {
+        Row: {
+          id: string
+          profile_id: string
+          source_kind: UserNotificationSourceKind
+          source_event_id: string
+          domain: UserNotificationDomain
+          title: string
+          body: string
+          href: string
+          is_read: boolean
+          read_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          source_kind: UserNotificationSourceKind
+          source_event_id: string
+          domain: UserNotificationDomain
+          title: string
+          body: string
+          href: string
+          is_read?: boolean
+          read_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          source_kind?: UserNotificationSourceKind
+          source_event_id?: string
+          domain?: UserNotificationDomain
+          title?: string
+          body?: string
+          href?: string
+          is_read?: boolean
+          read_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'user_notifications_profile_id_fkey'
+            columns: ['profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      prototype_credit_settings: {
+        Row: {
+          singleton_key: boolean
+          request_cost: number
+          updated_by_profile_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          singleton_key?: boolean
+          request_cost: number
+          updated_by_profile_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          singleton_key?: boolean
+          request_cost?: number
+          updated_by_profile_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'prototype_credit_settings_updated_by_profile_id_fkey'
+            columns: ['updated_by_profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      user_wallets: {
+        Row: {
+          profile_id: string
+          free_credits_balance: number
+          earned_credits_balance: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          profile_id: string
+          free_credits_balance?: number
+          earned_credits_balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          profile_id?: string
+          free_credits_balance?: number
+          earned_credits_balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'user_wallets_profile_id_fkey'
+            columns: ['profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      prototype_workspaces: {
+        Row: {
+          id: string
+          lead_id: string
+          project_id: string | null
+          requested_by_profile_id: string
+          current_stage: PrototypeStage
+          status: PrototypeWorkspaceStatus
+          last_operation_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          lead_id: string
+          project_id?: string | null
+          requested_by_profile_id: string
+          current_stage?: PrototypeStage
+          status?: PrototypeWorkspaceStatus
+          last_operation_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          lead_id?: string
+          project_id?: string | null
+          requested_by_profile_id?: string
+          current_stage?: PrototypeStage
+          status?: PrototypeWorkspaceStatus
+          last_operation_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'prototype_workspaces_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'prototype_workspaces_project_id_fkey'
+            columns: ['project_id']
+            referencedRelation: 'projects'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'prototype_workspaces_requested_by_profile_id_fkey'
+            columns: ['requested_by_profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      user_wallet_entries: {
+        Row: {
+          id: string
+          profile_id: string
+          entry_type: WalletEntryType
+          bucket: WalletBucket
+          delta_credits: number
+          operation_id: string
+          actor_profile_id: string | null
+          lead_id: string | null
+          prototype_workspace_id: string | null
+          metadata: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          profile_id: string
+          entry_type: WalletEntryType
+          bucket: WalletBucket
+          delta_credits: number
+          operation_id: string
+          actor_profile_id?: string | null
+          lead_id?: string | null
+          prototype_workspace_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          profile_id?: string
+          entry_type?: WalletEntryType
+          bucket?: WalletBucket
+          delta_credits?: number
+          operation_id?: string
+          actor_profile_id?: string | null
+          lead_id?: string | null
+          prototype_workspace_id?: string | null
+          metadata?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'user_wallet_entries_actor_profile_id_fkey'
+            columns: ['actor_profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'user_wallet_entries_lead_id_fkey'
+            columns: ['lead_id']
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'user_wallet_entries_profile_id_fkey'
+            columns: ['profile_id']
+            referencedRelation: 'user_profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'user_wallet_entries_prototype_workspace_id_fkey'
+            columns: ['prototype_workspace_id']
+            referencedRelation: 'prototype_workspaces'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: {
+      ensure_current_user_wallet: {
+        Args: Record<PropertyKey, never>
+        Returns: Database['public']['Tables']['user_wallets']['Row']
+      }
+      handoff_prototype_workspace_to_delivery: {
+        Args: {
+          target_workspace_id: string
+        }
+        Returns: Database['public']['Tables']['prototype_workspaces']['Row']
+      }
+      link_lead_prototype_workspace_to_project: {
+        Args: {
+          target_lead_id: string
+          target_project_id: string
+        }
+        Returns: {
+          prototype_workspace_id: string | null
+          linked_project_id: string | null
+          link_status: string
+        }[]
+      }
       claim_released_lead: {
         Args: {
           target_lead_id: string
         }
         Returns: string
+      }
+      request_lead_prototype: {
+        Args: {
+          target_lead_id: string
+        }
+        Returns: {
+          prototype_workspace_id: string
+          consumed_free: number
+          consumed_earned: number
+          free_balance: number
+          earned_balance: number
+        }[]
       }
       release_lead_as_no_response: {
         Args: {
@@ -476,9 +794,14 @@ export interface Database {
       lead_activity_type: LeadActivityType
       proposal_status: ProposalStatus
       project_status: ProjectStatus
+      project_activity_type: ProjectActivityType
       task_status: TaskStatus
       task_priority: TaskPriority
       task_activity_type: TaskActivityType
+      wallet_entry_type: WalletEntryType
+      wallet_bucket: WalletBucket
+      prototype_stage: PrototypeStage
+      prototype_workspace_status: PrototypeWorkspaceStatus
     }
     CompositeTypes: Record<string, never>
   }

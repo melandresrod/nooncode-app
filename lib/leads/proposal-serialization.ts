@@ -1,4 +1,4 @@
-import type { LeadProposal } from '@/lib/types'
+import type { LeadProposal, ProjectStatus } from '@/lib/types'
 
 export interface LeadProposalWire {
   id: string
@@ -13,6 +13,12 @@ export interface LeadProposalWire {
   sentAt: string | null
   acceptedAt: string | null
   handoffReadyAt: string | null
+  linkedProject: {
+    id: string
+    name: string
+    status: ProjectStatus
+    createdAt: string
+  } | null
 }
 
 export function deserializeLeadProposal(proposal: LeadProposalWire): LeadProposal {
@@ -29,5 +35,13 @@ export function deserializeLeadProposal(proposal: LeadProposalWire): LeadProposa
     sentAt: proposal.sentAt ? new Date(proposal.sentAt) : undefined,
     acceptedAt: proposal.acceptedAt ? new Date(proposal.acceptedAt) : undefined,
     handoffReadyAt: proposal.handoffReadyAt ? new Date(proposal.handoffReadyAt) : undefined,
+    linkedProject: proposal.linkedProject
+      ? {
+          id: proposal.linkedProject.id,
+          name: proposal.linkedProject.name,
+          status: proposal.linkedProject.status,
+          createdAt: new Date(proposal.linkedProject.createdAt),
+        }
+      : undefined,
   }
 }

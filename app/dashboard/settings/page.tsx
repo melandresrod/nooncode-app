@@ -118,27 +118,29 @@ export default function SettingsPage() {
                 Informacion de la Empresa
               </CardTitle>
               <CardDescription>
-                Configura los datos basicos de tu organizacion
+                {isSupabaseMode
+                  ? 'Vista de solo lectura. La persistencia de esta configuracion aun no esta conectada en esta pantalla.'
+                  : 'Configura los datos basicos de tu organizacion'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="company">Nombre de la empresa</Label>
-                  <Input id="company" defaultValue="NoonApp Corp" />
+                  <Input id="company" defaultValue="NoonApp Corp" disabled={isSupabaseMode} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="domain">Dominio</Label>
-                  <Input id="domain" defaultValue="noon.app" />
+                  <Input id="domain" defaultValue="noon.app" disabled={isSupabaseMode} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email de contacto</Label>
-                  <Input id="email" type="email" defaultValue="admin@noon.app" />
+                  <Input id="email" type="email" defaultValue="admin@noon.app" disabled={isSupabaseMode} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="timezone">Zona horaria</Label>
-                  <Select defaultValue="america_mexico">
-                    <SelectTrigger>
+                  <Select defaultValue="america_mexico" disabled={isSupabaseMode}>
+                    <SelectTrigger disabled={isSupabaseMode}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -150,9 +152,16 @@ export default function SettingsPage() {
                   </Select>
                 </div>
               </div>
-              <Button onClick={() => toast.success('Configuracion guardada')}>
-                Guardar cambios
-              </Button>
+              {isSupabaseMode ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  Estos campos son referenciales en el runtime actual. La edicion y guardado de company
+                  settings aun no estan habilitados en modo supabase.
+                </div>
+              ) : (
+                <Button onClick={() => toast.success('Configuracion guardada')}>
+                  Guardar cambios
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -163,49 +172,110 @@ export default function SettingsPage() {
                 Integraciones
               </CardTitle>
               <CardDescription>
-                Conecta con servicios externos
+                {isSupabaseMode
+                  ? 'Estado informativo solamente. Esta pantalla no configura ni verifica integraciones reales.'
+                  : 'Conecta con servicios externos'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 bg-[#635BFF]/10 rounded-lg flex items-center justify-center">
-                    <span className="font-bold text-[#635BFF]">S</span>
+              {isSupabaseMode ? (
+                <>
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 items-center justify-center rounded-lg bg-[#635BFF]/10">
+                        <span className="font-bold text-[#635BFF]">S</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">Stripe</p>
+                        <p className="text-sm text-muted-foreground">Procesamiento de pagos</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          No hay Stripe real ni verificacion de estado conectada desde esta UI.
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="border-dashed text-muted-foreground">
+                      No disponible
+                    </Badge>
                   </div>
-                  <div>
-                    <p className="font-medium">Stripe</p>
-                    <p className="text-sm text-muted-foreground">Procesamiento de pagos</p>
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 items-center justify-center rounded-lg bg-[#3ECF8E]/10">
+                        <span className="font-bold text-[#3ECF8E]">S</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">Supabase</p>
+                        <p className="text-sm text-muted-foreground">Base de datos y auth del runtime</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          La app usa Supabase en este runtime, pero esta pantalla no permite configurarlo
+                          ni validar salud.
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="border-emerald-200 bg-emerald-500/10 text-emerald-700">
+                      Runtime activo
+                    </Badge>
                   </div>
-                </div>
-                <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-200">
-                  <CheckCircle className="size-3 mr-1" />
-                  Conectado
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 bg-[#3ECF8E]/10 rounded-lg flex items-center justify-center">
-                    <span className="font-bold text-[#3ECF8E]">S</span>
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 items-center justify-center rounded-lg bg-[#4285F4]/10">
+                        <Mail className="size-5 text-[#4285F4]" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Gmail / SMTP</p>
+                        <p className="text-sm text-muted-foreground">Envio de emails</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          No hay configuracion operativa ni prueba de conexion disponible en esta UI.
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="border-dashed text-muted-foreground">
+                      No disponible
+                    </Badge>
                   </div>
-                  <div>
-                    <p className="font-medium">Supabase</p>
-                    <p className="text-sm text-muted-foreground">Base de datos</p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 bg-[#635BFF]/10 rounded-lg flex items-center justify-center">
+                        <span className="font-bold text-[#635BFF]">S</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">Stripe</p>
+                        <p className="text-sm text-muted-foreground">Procesamiento de pagos</p>
+                      </div>
+                    </div>
+                    <Badge className="bg-emerald-500/10 text-emerald-700 border-emerald-200">
+                      <CheckCircle className="size-3 mr-1" />
+                      Conectado
+                    </Badge>
                   </div>
-                </div>
-                <Button variant="outline" size="sm">Conectar</Button>
-              </div>
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 bg-[#4285F4]/10 rounded-lg flex items-center justify-center">
-                    <Mail className="size-5 text-[#4285F4]" />
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 bg-[#3ECF8E]/10 rounded-lg flex items-center justify-center">
+                        <span className="font-bold text-[#3ECF8E]">S</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">Supabase</p>
+                        <p className="text-sm text-muted-foreground">Base de datos</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">Conectar</Button>
                   </div>
-                  <div>
-                    <p className="font-medium">Gmail / SMTP</p>
-                    <p className="text-sm text-muted-foreground">Envio de emails</p>
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 bg-[#4285F4]/10 rounded-lg flex items-center justify-center">
+                        <Mail className="size-5 text-[#4285F4]" />
+                      </div>
+                      <div>
+                        <p className="font-medium">Gmail / SMTP</p>
+                        <p className="text-sm text-muted-foreground">Envio de emails</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm">Conectar</Button>
                   </div>
-                </div>
-                <Button variant="outline" size="sm">Conectar</Button>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -444,23 +514,47 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="text-base">Preferencias de Notificaciones</CardTitle>
               <CardDescription>
-                Configura como y cuando recibir notificaciones
+                {isSupabaseMode
+                  ? 'Estado informativo solamente. Las preferencias reales de notificacion aun no se pueden editar desde esta pantalla.'
+                  : 'Configura como y cuando recibir notificaciones'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {settingsNotificationOptions.map((item) => (
-                <div key={item.id} className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{item.label}</p>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
+              {isSupabaseMode ? (
+                <>
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    Estas preferencias aun no tienen carga, persistencia ni confirmacion de estado en modo
+                    supabase. La UI solo describe las categorias previstas.
                   </div>
-                  <Switch defaultChecked />
-                </div>
-              ))}
-              <Separator />
-              <Button onClick={() => toast.success('Preferencias guardadas')}>
-                Guardar preferencias
-              </Button>
+                  {settingsNotificationOptions.map((item) => (
+                    <div key={item.id} className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                      <div>
+                        <p className="font-medium">{item.label}</p>
+                        <p className="text-sm text-muted-foreground">{item.desc}</p>
+                      </div>
+                      <Badge variant="outline" className="border-dashed text-muted-foreground">
+                        No disponible
+                      </Badge>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {settingsNotificationOptions.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{item.label}</p>
+                        <p className="text-sm text-muted-foreground">{item.desc}</p>
+                      </div>
+                      <Switch defaultChecked />
+                    </div>
+                  ))}
+                  <Separator />
+                  <Button onClick={() => toast.success('Preferencias guardadas')}>
+                    Guardar preferencias
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

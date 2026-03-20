@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { buildLeadDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
 import type { Lead, LeadStatus } from '@/lib/types'
 import {
@@ -56,12 +58,24 @@ import { toast } from 'sonner'
 export default function LeadsPage() {
   const { user } = useAuth()
   const { leads, isLeadsLoading, updateLeadStatus, deleteLead } = useData()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [sortBy, setSortBy] = useState<LeadSortOption>('score')
   const [showNewDialog, setShowNewDialog] = useState(false)
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null)
+  const requestedLeadId = searchParams.get('leadId')
+
+  const replaceLeadHref = (leadId: string | null) => {
+    const nextHref = leadId
+      ? buildLeadDetailHref(leadId, searchParams)
+      : clearDashboardEntityHref(pathname, searchParams, 'leadId')
+
+    router.replace(nextHref, { scroll: false })
+  }
 
   useEffect(() => {
     if (!selectedLead) {
@@ -72,13 +86,37 @@ export default function LeadsPage() {
 
     if (!nextSelectedLead) {
       setSelectedLead(null)
+
+      if (requestedLeadId === selectedLead.id) {
+        replaceLeadHref(null)
+      }
+
       return
     }
 
     if (nextSelectedLead !== selectedLead) {
       setSelectedLead(nextSelectedLead)
     }
-  }, [leads, selectedLead])
+  }, [leads, requestedLeadId, selectedLead])
+
+  useEffect(() => {
+    if (!requestedLeadId || isLeadsLoading) {
+      return
+    }
+
+    if (selectedLead?.id === requestedLeadId) {
+      return
+    }
+
+    const requestedLead = leads.find((lead) => lead.id === requestedLeadId) ?? null
+
+    if (!requestedLead) {
+      replaceLeadHref(null)
+      return
+    }
+
+    setSelectedLead(requestedLead)
+  }, [isLeadsLoading, leads, requestedLeadId, selectedLead])
 
   if (!user) return null
 
@@ -110,10 +148,34 @@ export default function LeadsPage() {
         setLeadToDelete(null)
         if (selectedLead?.id === leadToDelete.id) {
           setSelectedLead(null)
+
+          if (requestedLeadId === leadToDelete.id) {
+            replaceLeadHref(null)
+          }
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'No se pudo eliminar el lead')
       }
+    }
+  }
+
+  const handleOpenLead = (lead: Lead) => {
+    setSelectedLead(lead)
+
+    if (requestedLeadId !== lead.id) {
+      replaceLeadHref(lead.id)
+    }
+  }
+
+  const handleLeadDialogChange = (open: boolean) => {
+    if (open) {
+      return
+    }
+
+    setSelectedLead(null)
+
+    if (requestedLeadId) {
+      replaceLeadHref(null)
     }
   }
 
@@ -239,7 +301,7 @@ export default function LeadsPage() {
             <LeadCard
               key={lead.id}
               lead={lead}
-              onClick={() => setSelectedLead(lead)}
+              onClick={() => handleOpenLead(lead)}
               onStatusChange={handleStatusChange}
               onDelete={() => setLeadToDelete(lead)}
             />
@@ -248,7 +310,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Lead Detail Dialog */}
-      <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
+      <Dialog open={!!selectedLead} onOpenChange={handleLeadDialogChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle del Lead</DialogTitle>

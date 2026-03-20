@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { updateLeadSchema } from '@/lib/server/leads/schema'
 import { mapLeadRowToWire, mapUpdateLeadInputToUpdate } from '@/lib/server/leads/mappers'
 import { deleteLeadById, getLeadById, updateLeadById } from '@/lib/server/leads/repository'
+import { assertSalesLeadOwnership } from '@/lib/server/leads/permissions'
 import { requireRole } from '@/lib/server/auth/guards'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { ApiError, toErrorResponse } from '@/lib/server/api/errors'
@@ -12,31 +13,6 @@ const routeParamsSchema = z.object({
 })
 
 const allowedLeadRoles = ['admin', 'sales_manager', 'sales'] as const
-
-function assertSalesLeadOwnership(
-  principal: Awaited<ReturnType<typeof requireRole>>,
-  lead: NonNullable<Awaited<ReturnType<typeof getLeadById>>>
-) {
-  if (principal.role !== 'sales') {
-    return
-  }
-
-  const canManageLead =
-    lead.assigned_to === principal.userId ||
-    (
-      lead.created_by === principal.userId &&
-      lead.assigned_to === null &&
-      lead.assignment_status !== 'released_no_response'
-    )
-
-  if (!canManageLead) {
-    throw new ApiError(
-      'FORBIDDEN',
-      'The authenticated sales user does not own this lead.',
-      403
-    )
-  }
-}
 
 export async function PATCH(
   request: Request,

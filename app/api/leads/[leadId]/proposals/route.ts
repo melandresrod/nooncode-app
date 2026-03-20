@@ -4,10 +4,13 @@ import { requireRole } from '@/lib/server/auth/guards'
 import { toErrorResponse } from '@/lib/server/api/errors'
 import { createSupabaseServerClient } from '@/lib/server/supabase/server'
 import { getLeadById } from '@/lib/server/leads/repository'
+import { listLeadActivities } from '@/lib/server/leads/activity-repository'
 import {
   createLeadProposal,
   listLeadProposals,
 } from '@/lib/server/leads/proposal-repository'
+import { findProposalLinkedProjectFromActivities } from '@/lib/server/leads/proposal-lineage'
+import { listProjectsByProposalIds } from '@/lib/server/projects/repository'
 import {
   mapCreateLeadProposalInputToInsert,
   mapLeadProposalRowToWire,
@@ -46,9 +49,23 @@ export async function GET(
     }
 
     const proposals = await listLeadProposals(client, leadId)
+    const proposalIds = proposals.map((proposal) => proposal.id)
+    const projects = await listProjectsByProposalIds(client, proposalIds)
+    const projectByProposalId = new Map(
+      projects
+        .filter((project) => project.source_proposal_id)
+        .map((project) => [project.source_proposal_id as string, project])
+    )
+    const leadActivities = await listLeadActivities(client, leadId)
 
     return NextResponse.json({
-      data: proposals.map(mapLeadProposalRowToWire),
+      data: proposals.map((proposal) =>
+        mapLeadProposalRowToWire(
+          proposal,
+          projectByProposalId.get(proposal.id)
+            ?? findProposalLinkedProjectFromActivities(leadActivities, proposal.id)
+        )
+      ),
     })
   } catch (error) {
     return toErrorResponse(error)

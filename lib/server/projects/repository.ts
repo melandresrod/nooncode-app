@@ -2,9 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
 import type {
   ProjectInsert,
-  ProjectRow,
+  ProjectRowWithLineage,
   ProjectUpdate,
 } from '@/lib/server/projects/types'
+import { listPrototypeWorkspacesByProjectIds } from '@/lib/server/prototypes/repository'
 
 type DatabaseClient = SupabaseClient<Database>
 
@@ -24,10 +25,51 @@ const projectSelect = `
   start_date,
   end_date,
   created_at,
-  updated_at
+  updated_at,
+  source_lead:leads!projects_source_lead_id_fkey(id, name, company),
+  source_proposal:lead_proposals!projects_source_proposal_id_fkey(id, title)
 `
 
-export async function listProjects(client: DatabaseClient): Promise<ProjectRow[]> {
+async function attachPrototypeWorkspaces(
+  client: DatabaseClient,
+  projects: ProjectRowWithLineage[]
+): Promise<ProjectRowWithLineage[]> {
+  if (projects.length === 0) {
+    return projects
+  }
+
+  const prototypeWorkspaces = await listPrototypeWorkspacesByProjectIds(
+    client,
+    projects.map((project) => project.id)
+  )
+  const prototypeWorkspaceMap = new Map<string, ProjectRowWithLineage['prototype_workspace']>()
+
+  for (const workspace of prototypeWorkspaces) {
+    if (!workspace.project_id) {
+      continue
+    }
+
+    const currentEntries = prototypeWorkspaceMap.get(workspace.project_id) ?? []
+    currentEntries.push({
+      id: workspace.id,
+      requested_by_profile_id: workspace.requested_by_profile_id,
+      current_stage: workspace.current_stage,
+      status: workspace.status,
+      created_at: workspace.created_at,
+      requested_by: workspace.requested_by
+        ? { full_name: workspace.requested_by.full_name }
+        : null,
+    })
+    prototypeWorkspaceMap.set(workspace.project_id, currentEntries)
+  }
+
+  return projects.map((project) => ({
+    ...project,
+    prototype_workspace: prototypeWorkspaceMap.get(project.id) ?? [],
+  }))
+}
+
+export async function listProjects(client: DatabaseClient): Promise<ProjectRowWithLineage[]> {
   const { data, error } = await client
     .from('projects')
     .select(projectSelect)
@@ -37,13 +79,13 @@ export async function listProjects(client: DatabaseClient): Promise<ProjectRow[]
     throw new Error(`Failed to list projects: ${error.message}`)
   }
 
-  return (data ?? []) as ProjectRow[]
+  return attachPrototypeWorkspaces(client, (data ?? []) as ProjectRowWithLineage[])
 }
 
 export async function getProjectById(
   client: DatabaseClient,
   projectId: string
-): Promise<ProjectRow | null> {
+): Promise<ProjectRowWithLineage | null> {
   const { data, error } = await client
     .from('projects')
     .select(projectSelect)
@@ -54,13 +96,18 @@ export async function getProjectById(
     throw new Error(`Failed to load project: ${error.message}`)
   }
 
-  return (data ?? null) as ProjectRow | null
+  if (!data) {
+    return null
+  }
+
+  const [project] = await attachPrototypeWorkspaces(client, [data as ProjectRowWithLineage])
+  return project ?? null
 }
 
 export async function getProjectByProposalId(
   client: DatabaseClient,
   proposalId: string
-): Promise<ProjectRow | null> {
+): Promise<ProjectRowWithLineage | null> {
   const { data, error } = await client
     .from('projects')
     .select(projectSelect)
@@ -71,16 +118,41 @@ export async function getProjectByProposalId(
     throw new Error(`Failed to load project by proposal: ${error.message}`)
   }
 
-  return (data ?? null) as ProjectRow | null
+  if (!data) {
+    return null
+  }
+
+  const [project] = await attachPrototypeWorkspaces(client, [data as ProjectRowWithLineage])
+  return project ?? null
+}
+
+export async function listProjectsByProposalIds(
+  client: DatabaseClient,
+  proposalIds: string[]
+): Promise<ProjectRowWithLineage[]> {
+  if (proposalIds.length === 0) {
+    return []
+  }
+
+  const { data, error } = await client
+    .from('projects')
+    .select(projectSelect)
+    .in('source_proposal_id', proposalIds)
+
+  if (error) {
+    throw new Error(`Failed to list projects by proposal ids: ${error.message}`)
+  }
+
+  return attachPrototypeWorkspaces(client, (data ?? []) as ProjectRowWithLineage[])
 }
 
 export async function createProject(
   client: DatabaseClient,
-  project: ProjectInsert
-): Promise<ProjectRow> {
+  projectInsert: ProjectInsert
+): Promise<ProjectRowWithLineage> {
   const { data, error } = await client
     .from('projects')
-    .insert(project)
+    .insert(projectInsert)
     .select(projectSelect)
     .single()
 
@@ -88,14 +160,19 @@ export async function createProject(
     throw new Error(`Failed to create project: ${error?.message ?? 'No project returned.'}`)
   }
 
-  return data as ProjectRow
+  const [createdProject] = await attachPrototypeWorkspaces(client, [data as ProjectRowWithLineage])
+  if (!createdProject) {
+    throw new Error('Created project could not be enriched with prototype linkage.')
+  }
+
+  return createdProject
 }
 
 export async function updateProjectById(
   client: DatabaseClient,
   projectId: string,
   updates: ProjectUpdate
-): Promise<ProjectRow> {
+): Promise<ProjectRowWithLineage> {
   const { data, error } = await client
     .from('projects')
     .update(updates)
@@ -107,5 +184,10 @@ export async function updateProjectById(
     throw new Error(`Failed to update project: ${error?.message ?? 'No project returned.'}`)
   }
 
-  return data as ProjectRow
+  const [updatedProject] = await attachPrototypeWorkspaces(client, [data as ProjectRowWithLineage])
+  if (!updatedProject) {
+    throw new Error('Updated project could not be enriched with prototype linkage.')
+  }
+
+  return updatedProject
 }

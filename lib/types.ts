@@ -109,13 +109,20 @@ export interface LeadProposal {
   sentAt?: Date
   acceptedAt?: Date
   handoffReadyAt?: Date
+  linkedProject?: {
+    id: string
+    name: string
+    status: ProjectStatus
+    createdAt: Date
+  }
 }
 
 // Project Types
 export type ProjectStatus = 'backlog' | 'in_progress' | 'review' | 'delivered' | 'completed'
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
-export type TaskActivityType = 'note_added'
+export type ProjectActivityType = 'status_changed' | 'pm_changed' | 'team_changed' | 'schedule_changed'
+export type TaskActivityType = 'note_added' | 'status_changed' | 'actual_hours_updated'
 
 export interface Project {
   id: string
@@ -133,8 +140,15 @@ export interface Project {
   createdAt: Date
   updatedAt: Date
   sourceLeadId?: string
+  sourceLeadName?: string
   sourceProposalId?: string
+  sourceProposalTitle?: string
   handoffReadyAt?: Date
+  prototypeWorkspaceId?: string
+  prototypeWorkspaceStatus?: PrototypeWorkspaceStatus
+  prototypeWorkspaceStage?: PrototypeStage
+  prototypeRequestedByName?: string
+  prototypeCreatedAt?: Date
 }
 
 export type ProjectDraft = Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
@@ -179,15 +193,122 @@ export interface TaskActivity {
   createdAt: Date
 }
 
-export interface ProjectTaskActivity {
+export interface ProjectActivity {
   id: string
-  taskId: string
-  taskTitle: string
-  type: TaskActivityType
+  projectId: string
+  type: ProjectActivityType
   actorId?: string
   actorName: string
-  noteBody?: string
+  metadata?: Record<string, unknown>
   createdAt: Date
+}
+
+export type ProjectTaskActivity =
+  | {
+      id: string
+      sourceKind: 'project_activity'
+      projectId: string
+      type: ProjectActivityType
+      actorId?: string
+      actorName: string
+      taskId?: never
+      taskTitle?: never
+      noteBody?: never
+      metadata?: Record<string, unknown>
+      createdAt: Date
+    }
+  | {
+      id: string
+      sourceKind: 'task_activity'
+      projectId: string
+      taskId: string
+      taskTitle: string
+      type: TaskActivityType
+      actorId?: string
+      actorName: string
+      noteBody?: string
+      metadata?: Record<string, unknown>
+      createdAt: Date
+    }
+
+export type UpdateFeedDomain = 'sales' | 'delivery'
+export type UpdateFeedSourceKind = 'lead_activity' | 'task_activity' | 'project_activity'
+export type UpdateFeedEventType = LeadActivityType | TaskActivityType | ProjectActivityType
+export type UserNotificationDomain = UpdateFeedDomain
+export type UserNotificationSourceKind = UpdateFeedSourceKind
+export type WalletEntryType =
+  | 'free_grant'
+  | 'earnings_credit'
+  | 'manual_adjustment'
+  | 'prototype_request_debit'
+  | 'prototype_continue_debit'
+export type WalletBucket = 'free' | 'earned'
+export type PrototypeStage = 'sales' | 'delivery'
+export type PrototypeWorkspaceStatus = 'pending_generation' | 'ready' | 'delivery_active' | 'archived'
+
+export interface UpdateFeedItem {
+  id: string
+  domain: UpdateFeedDomain
+  sourceKind: UpdateFeedSourceKind
+  eventType: UpdateFeedEventType
+  actorName: string
+  title: string
+  description: string
+  entityLabel: string
+  href: string
+  createdAt: Date
+}
+
+export interface UserNotification {
+  id: string
+  domain: UserNotificationDomain
+  sourceKind: UserNotificationSourceKind
+  title: string
+  body: string
+  href: string
+  isRead: boolean
+  readAt?: Date
+  createdAt: Date
+}
+
+export interface WalletEntry {
+  id: string
+  type: WalletEntryType
+  bucket: WalletBucket
+  deltaCredits: number
+  operationId: string
+  actorId?: string
+  actorName: string
+  leadId?: string
+  prototypeWorkspaceId?: string
+  metadata?: Record<string, unknown>
+  createdAt: Date
+}
+
+export interface WalletSummary {
+  freeAvailable: number
+  earnedAvailable: number
+  totalAvailable: number
+  prototypeRequestCost?: number
+  entries: WalletEntry[]
+}
+
+export interface PrototypeWorkspace {
+  id: string
+  leadId: string
+  projectId?: string
+  requestedByProfileId: string
+  currentStage: PrototypeStage
+  status: PrototypeWorkspaceStatus
+  lastOperationId?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface PrototypeWorkspaceListItem extends PrototypeWorkspace {
+  leadName: string
+  projectName?: string
+  requestedByName: string
 }
 
 // Payment Types

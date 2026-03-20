@@ -1,14 +1,17 @@
 import type { ProjectWire } from '@/lib/projects/serialization'
 import type {
   ProjectInsert,
-  ProjectRow,
+  ProjectRowWithLineage,
   ProjectUpdate,
 } from '@/lib/server/projects/types'
 import type { LeadRowWithProfiles } from '@/lib/server/leads/types'
 import type { LeadProposalRow } from '@/lib/server/leads/proposal-types'
 import type { UpdateProjectInput } from '@/lib/server/projects/schema'
 
-export function mapProjectRowToWire(row: ProjectRow): ProjectWire {
+export function mapProjectRowToWire(row: ProjectRowWithLineage): ProjectWire {
+  const prototypeWorkspace = [...(row.prototype_workspace ?? [])]
+    .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0] ?? null
+
   return {
     id: row.id,
     name: row.name,
@@ -25,8 +28,15 @@ export function mapProjectRowToWire(row: ProjectRow): ProjectWire {
     startDate: row.start_date,
     endDate: row.end_date,
     sourceLeadId: row.source_lead_id,
+    sourceLeadName: row.source_lead?.company ?? row.source_lead?.name ?? null,
     sourceProposalId: row.source_proposal_id,
+    sourceProposalTitle: row.source_proposal?.title ?? null,
     handoffReadyAt: row.handoff_ready_at,
+    prototypeWorkspaceId: prototypeWorkspace?.id ?? null,
+    prototypeWorkspaceStatus: prototypeWorkspace?.status ?? null,
+    prototypeWorkspaceStage: prototypeWorkspace?.current_stage ?? null,
+    prototypeRequestedByName: prototypeWorkspace?.requested_by?.full_name ?? null,
+    prototypeCreatedAt: prototypeWorkspace?.created_at ?? null,
   }
 }
 

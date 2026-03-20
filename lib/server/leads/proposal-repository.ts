@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/server/supabase/database.types'
 import type {
   LeadProposalInsert,
-  LeadProposalRow,
+  LeadProposalRowWithLinkedProject,
   LeadProposalUpdate,
 } from '@/lib/server/leads/proposal-types'
 
@@ -21,13 +21,14 @@ const leadProposalSelect = `
   accepted_at,
   handoff_ready_at,
   created_at,
-  updated_at
+  updated_at,
+  linked_project:projects!projects_source_proposal_id_fkey(id, name, status, created_at)
 `
 
 export async function listLeadProposals(
   client: DatabaseClient,
   leadId: string
-): Promise<LeadProposalRow[]> {
+): Promise<LeadProposalRowWithLinkedProject[]> {
   const { data, error } = await client
     .from('lead_proposals')
     .select(leadProposalSelect)
@@ -38,13 +39,13 @@ export async function listLeadProposals(
     throw new Error(`Failed to list lead proposals: ${error.message}`)
   }
 
-  return (data ?? []) as LeadProposalRow[]
+  return (data ?? []) as LeadProposalRowWithLinkedProject[]
 }
 
 export async function createLeadProposal(
   client: DatabaseClient,
   proposal: LeadProposalInsert
-): Promise<LeadProposalRow> {
+): Promise<LeadProposalRowWithLinkedProject> {
   const { data, error } = await client
     .from('lead_proposals')
     .insert(proposal)
@@ -55,13 +56,13 @@ export async function createLeadProposal(
     throw new Error(`Failed to create lead proposal: ${error?.message ?? 'No proposal returned.'}`)
   }
 
-  return data as LeadProposalRow
+  return data as LeadProposalRowWithLinkedProject
 }
 
 export async function getLeadProposalById(
   client: DatabaseClient,
   proposalId: string
-): Promise<LeadProposalRow | null> {
+): Promise<LeadProposalRowWithLinkedProject | null> {
   const { data, error } = await client
     .from('lead_proposals')
     .select(leadProposalSelect)
@@ -72,14 +73,14 @@ export async function getLeadProposalById(
     throw new Error(`Failed to load lead proposal: ${error.message}`)
   }
 
-  return (data ?? null) as LeadProposalRow | null
+  return (data ?? null) as LeadProposalRowWithLinkedProject | null
 }
 
 export async function updateLeadProposalById(
   client: DatabaseClient,
   proposalId: string,
   updates: LeadProposalUpdate
-): Promise<LeadProposalRow> {
+): Promise<LeadProposalRowWithLinkedProject> {
   const { data, error } = await client
     .from('lead_proposals')
     .update(updates)
@@ -91,5 +92,5 @@ export async function updateLeadProposalById(
     throw new Error(`Failed to update lead proposal: ${error?.message ?? 'No proposal returned.'}`)
   }
 
-  return data as LeadProposalRow
+  return data as LeadProposalRowWithLinkedProject
 }

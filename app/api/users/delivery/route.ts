@@ -4,7 +4,7 @@ import { toErrorResponse } from '@/lib/server/api/errors'
 import { listDeliveryUsers } from '@/lib/server/profiles/repository'
 import { createSupabaseAdminClient } from '@/lib/server/supabase/admin'
 
-const allowedDeliveryUserRoles = ['admin', 'pm', 'developer'] as const
+const allowedDeliveryUserRoles = ['admin', 'sales_manager', 'pm', 'developer'] as const
 
 export async function GET() {
   try {

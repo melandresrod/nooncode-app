@@ -3,7 +3,11 @@
 import { useMemo } from 'react'
 import { useAuth, canViewAllStats, canAccessDelivery, canAccessSales } from '@/lib/auth-context'
 import { useData } from '@/lib/data-context'
-import { reportsChartColors, selectReportsViewModel } from '@/lib/dashboard-selectors'
+import {
+  reportsChartColors,
+  selectReportsRevenueKpiCopy,
+  selectReportsViewModel,
+} from '@/lib/dashboard-selectors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -112,6 +116,7 @@ export default function ReportsPage() {
   const hasPipelineData = pipelineData.some((entry) => entry.count > 0)
   const hasSourceData = sourceData.length > 0
   const hasProjectStatusData = projectStatusData.length > 0
+  const revenueKpiCopy = selectReportsRevenueKpiCopy(authMode)
 
   return (
     <div className="p-6 space-y-6">
@@ -139,13 +144,13 @@ export default function ReportsPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>
+            <CardTitle className="text-sm font-medium">{revenueKpiCopy.title}</CardTitle>
             <DollarSign className="size-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${stats.totalRevenue.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              Promedio ${stats.avgDealSize.toLocaleString()} por venta
+              Promedio ${stats.avgDealSize.toLocaleString()} {revenueKpiCopy.averageLabel}
             </p>
           </CardContent>
         </Card>

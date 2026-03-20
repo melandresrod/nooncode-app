@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth, canManageTeam } from '@/lib/auth-context'
+import { buildTaskDetailHref, clearDashboardEntityHref } from '@/lib/dashboard-navigation'
 import { useData } from '@/lib/data-context'
 import type { Task, TaskActivity, TaskStatus, TaskPriority } from '@/lib/types'
 import { TaskFormDialog } from '@/components/task-form-dialog'
@@ -29,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { formatTaskActivityBody, formatTaskActivityTitle } from '@/lib/tasks/activity-copy'
 import { toast } from 'sonner'
 import {
   ListTodo,
@@ -64,7 +67,7 @@ const priorityConfig: Record<TaskPriority, { label: string; color: string; icon:
 }
 
 export default function TasksPage() {
-  const { user } = useAuth()
+  const { user, authMode } = useAuth()
   const {
     taskBoardTasks,
     projectBoardProjects,
@@ -73,22 +76,31 @@ export default function TasksPage() {
     getTaskActivity,
     addTaskNote,
   } = useData()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-
-  if (!user) return null
-
-  const canCreateTasks = canManageTeam(user.role)
+  const requestedTaskId = searchParams.get('taskId')
+  const canCreateTasks = user ? canManageTeam(user.role) : false
   const realProjects = projectBoardProjects.filter((project) => isUuid(project.id))
+  const isSupabaseTeamTaskView = authMode === 'supabase' && user?.role !== 'developer'
+  const replaceTaskHref = (taskId: string | null) => {
+    const nextHref = taskId
+      ? buildTaskDetailHref(taskId, searchParams)
+      : clearDashboardEntityHref(pathname, searchParams, 'taskId')
+
+    router.replace(nextHref, { scroll: false })
+  }
 
   // Filter tasks for current user (devs see only their tasks, PMs see all)
-  const userTasks = user.role === 'developer'
+  const visibleTasks = user?.role === 'developer'
     ? taskBoardTasks.filter((task) => task.assignedTo === user.id)
     : taskBoardTasks
 
-  const filteredTasks = userTasks.filter((task) => {
+  const filteredTasks = visibleTasks.filter((task) => {
     const matchesStatus = statusFilter === 'all' || task.status === statusFilter
     const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter
     return matchesStatus && matchesPriority
@@ -108,7 +120,7 @@ export default function TasksPage() {
   }
 
   const handleQuickComplete = async (taskId: string) => {
-    const task = taskBoardTasks.find((boardTask) => boardTask.id === taskId)
+    const task = visibleTasks.find((boardTask) => boardTask.id === taskId)
     if (task) {
       const newStatus = task.status === 'done' ? 'todo' : 'done'
       await handleStatusChange(taskId, newStatus)
@@ -132,25 +144,79 @@ export default function TasksPage() {
   }
 
   const selectedTask = useMemo(
-    () => taskBoardTasks.find((task) => task.id === selectedTaskId) ?? null,
-    [taskBoardTasks, selectedTaskId]
+    () => visibleTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, visibleTasks]
   )
 
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    if (!requestedTaskId) {
+      return
+    }
+
+    if (selectedTaskId === requestedTaskId) {
+      return
+    }
+
+    const requestedTask = visibleTasks.find((task) => task.id === requestedTaskId) ?? null
+
+    if (!requestedTask) {
+      if (visibleTasks.length > 0) {
+        replaceTaskHref(null)
+      }
+      return
+    }
+
+    setSelectedTaskId(requestedTask.id)
+  }, [requestedTaskId, selectedTaskId, user, visibleTasks])
+
+  useEffect(() => {
+    if (!user) {
+      return
+    }
+
+    if (!selectedTaskId) {
+      return
+    }
+
+    const nextSelectedTask = visibleTasks.find((task) => task.id === selectedTaskId) ?? null
+
+    if (!nextSelectedTask) {
+      setSelectedTaskId(null)
+
+      if (requestedTaskId === selectedTaskId) {
+        replaceTaskHref(null)
+      }
+    }
+  }, [requestedTaskId, selectedTaskId, user, visibleTasks])
+
+  if (!user) return null
+
   // Stats
-  const totalTasks = userTasks.length
-  const todoTasks = userTasks.filter((t) => t.status === 'todo').length
-  const inProgressTasks = userTasks.filter((t) => t.status === 'in_progress').length
-  const completedTasks = userTasks.filter((t) => t.status === 'done').length
+  const totalTasks = visibleTasks.length
+  const todoTasks = visibleTasks.filter((t) => t.status === 'todo').length
+  const inProgressTasks = visibleTasks.filter((t) => t.status === 'in_progress').length
+  const completedTasks = visibleTasks.filter((t) => t.status === 'done').length
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+  const pageTitle = isSupabaseTeamTaskView ? 'Tareas del equipo' : 'Mis Tareas'
+  const pageDescription = isSupabaseTeamTaskView
+    ? 'Supervisa y da seguimiento a las tareas visibles del equipo'
+    : 'Gestiona y da seguimiento a tus tareas asignadas'
+  const emptyStateDescription = isSupabaseTeamTaskView
+    ? 'Ajusta los filtros o espera nuevas tareas visibles para este equipo.'
+    : 'Ajusta los filtros o espera nuevas asignaciones para ver trabajo aqui.'
 
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-balance">Mis Tareas</h1>
+          <h1 className="text-2xl font-bold text-balance">{pageTitle}</h1>
           <p className="text-muted-foreground max-w-2xl">
-            Gestiona y da seguimiento a tus tareas asignadas
+            {pageDescription}
           </p>
         </div>
         {canCreateTasks && realProjects.length > 0 && (
@@ -244,7 +310,7 @@ export default function TasksPage() {
                 </EmptyMedia>
                 <EmptyTitle>No hay tareas que mostrar</EmptyTitle>
                 <EmptyDescription>
-                  Ajusta los filtros o espera nuevas asignaciones para ver trabajo aqui.
+                  {emptyStateDescription}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -256,14 +322,33 @@ export default function TasksPage() {
               task={task}
               projectName={getProjectName(task.projectId)}
               onQuickComplete={handleQuickComplete}
-              onClick={() => setSelectedTaskId(task.id)}
+              onClick={() => {
+                setSelectedTaskId(task.id)
+
+                if (requestedTaskId !== task.id) {
+                  replaceTaskHref(task.id)
+                }
+              }}
             />
           ))
         )}
       </div>
 
       {/* Task Detail Dialog */}
-      <Dialog open={!!selectedTask} onOpenChange={() => setSelectedTaskId(null)}>
+      <Dialog
+        open={!!selectedTask}
+        onOpenChange={(open) => {
+          if (open) {
+            return
+          }
+
+          setSelectedTaskId(null)
+
+          if (requestedTaskId) {
+            replaceTaskHref(null)
+          }
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Detalle de Tarea</DialogTitle>
@@ -378,7 +463,7 @@ function TaskCard({ task, projectName, onQuickComplete, onClick }: TaskCardProps
 interface TaskDetailProps {
   task: Task
   projectName: string
-  onStatusChange: (taskId: string, newStatus: TaskStatus) => void
+  onStatusChange: (taskId: string, newStatus: TaskStatus) => Promise<void>
   onSaveProgress: (taskId: string, hoursWorked: string, note: string) => Promise<void>
   getTaskActivity: (taskId: string) => Promise<TaskActivity[]>
 }
@@ -390,6 +475,11 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
   const [isLoadingActivity, setIsLoadingActivity] = useState(false)
   const [isSavingProgress, setIsSavingProgress] = useState(false)
   const PriorityIcon = priorityConfig[task.priority].icon
+
+  const refreshActivity = async () => {
+    const nextActivities = await getTaskActivity(task.id)
+    setActivities(nextActivities)
+  }
 
   useEffect(() => {
     let isActive = true
@@ -425,14 +515,16 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
     setIsSavingProgress(true)
     try {
       await onSaveProgress(task.id, hoursWorked, notes)
-      if (notes.trim()) {
-        const nextActivities = await getTaskActivity(task.id)
-        setActivities(nextActivities)
-      }
+      await refreshActivity()
       setNotes('')
     } finally {
       setIsSavingProgress(false)
     }
+  }
+
+  const handleStatusSelect = async (newStatus: TaskStatus) => {
+    await onStatusChange(task.id, newStatus)
+    await refreshActivity()
   }
 
   return (
@@ -456,7 +548,9 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
           <Label className="text-xs text-muted-foreground">Estado</Label>
           <Select
             value={task.status}
-            onValueChange={(v) => onStatusChange(task.id, v as TaskStatus)}
+            onValueChange={(v) => {
+              void handleStatusSelect(v as TaskStatus)
+            }}
           >
             <SelectTrigger className="mt-1">
               <SelectValue />
@@ -531,18 +625,21 @@ function TaskDetail({ task, projectName, onStatusChange, onSaveProgress, getTask
         {isLoadingActivity ? (
           <p className="text-sm text-muted-foreground">Cargando actividad...</p>
         ) : activities.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aun no hay notas de avance en esta tarea.</p>
+          <p className="text-sm text-muted-foreground">Aun no hay actividad visible en esta tarea.</p>
         ) : (
           <div className="space-y-3">
             {activities.map((activity) => (
               <div key={activity.id} className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium">{activity.actorName}</p>
+                  <div>
+                    <p className="text-sm font-medium">{formatTaskActivityTitle(activity)}</p>
+                    <p className="text-xs text-muted-foreground">{activity.actorName}</p>
+                  </div>
                   <span className="text-xs text-muted-foreground">
                     {activity.createdAt.toLocaleString('es-MX')}
                   </span>
                 </div>
-                <p className="text-sm text-muted-foreground">{activity.noteBody ?? ''}</p>
+                <p className="text-sm text-muted-foreground">{formatTaskActivityBody(activity)}</p>
               </div>
             ))}
           </div>

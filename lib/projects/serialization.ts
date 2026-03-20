@@ -16,8 +16,15 @@ export interface ProjectWire {
   createdAt: string
   updatedAt: string
   sourceLeadId: string | null
+  sourceLeadName: string | null
   sourceProposalId: string | null
+  sourceProposalTitle: string | null
   handoffReadyAt: string | null
+  prototypeWorkspaceId: string | null
+  prototypeWorkspaceStatus: Project['prototypeWorkspaceStatus'] | null
+  prototypeWorkspaceStage: Project['prototypeWorkspaceStage'] | null
+  prototypeRequestedByName: string | null
+  prototypeCreatedAt: string | null
 }
 
 export function deserializeProject(project: ProjectWire): Project {
@@ -37,7 +44,14 @@ export function deserializeProject(project: ProjectWire): Project {
     createdAt: new Date(project.createdAt),
     updatedAt: new Date(project.updatedAt),
     sourceLeadId: project.sourceLeadId ?? undefined,
+    sourceLeadName: project.sourceLeadName ?? undefined,
     sourceProposalId: project.sourceProposalId ?? undefined,
+    sourceProposalTitle: project.sourceProposalTitle ?? undefined,
     handoffReadyAt: project.handoffReadyAt ? new Date(project.handoffReadyAt) : undefined,
+    prototypeWorkspaceId: project.prototypeWorkspaceId ?? undefined,
+    prototypeWorkspaceStatus: project.prototypeWorkspaceStatus ?? undefined,
+    prototypeWorkspaceStage: project.prototypeWorkspaceStage ?? undefined,
+    prototypeRequestedByName: project.prototypeRequestedByName ?? undefined,
+    prototypeCreatedAt: project.prototypeCreatedAt ? new Date(project.prototypeCreatedAt) : undefined,
   }
 }
